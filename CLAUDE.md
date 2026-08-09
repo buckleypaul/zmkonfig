@@ -2,16 +2,21 @@
 
 ## Tracking outstanding work
 
-`outstanding-work.md` is the running list of known gaps, deferred decisions and
-things worth revisiting.
+Known gaps, deferred decisions and things worth revisiting are **GitHub
+issues** on `buckleypaul/zmkonfig`, prioritised on the Zmkonfig project board
+(`gh project item-list 1 --owner buckleypaul`). `outstanding-work.md` is now
+only a signpost to that.
 
 - When you notice undone work, a gap, or a worthwhile suggestion — and you are
-  not doing it now — **add it to `outstanding-work.md`**. Say what it is and why
-  it matters, not just a title.
-- When you finish something that is listed there, **remove the entry**. The file
-  should shrink as work lands.
-- Do not use it for a running log or for things already done. It is a list of
-  what is *not* done.
+  not doing it now — **open an issue**. Say what it is and why it matters, not
+  just a title; the body is where the reasoning has to survive.
+- Label it with its `area:*` (`parser`, `assistant`, `llm`, `ui`, `build`,
+  `testing`), plus `tech-debt`, `toolchain-workaround` or `upstream` if it
+  applies. Then `gh project item-add 1 --owner buckleypaul --url <url>` and set
+  Priority — P0 blocking, P1 high, P2 medium, P3 low.
+- When you finish something, **close the issue** and reference it from the
+  commit. Do not leave it open with a "done" comment.
+- Issues are for what is *not* done. They are not a running log.
 
 ## Building
 
