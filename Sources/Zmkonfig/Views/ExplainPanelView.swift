@@ -94,11 +94,7 @@ struct ExplainPanelView: View {
                     SectionLabel(text: layer.displayName)
                     Spacer()
                     Button(explain.layer.text(for: ExplainModel.layerSubject(layer.id)) == nil ? "Explain" : "Again") {
-                        explain.explainLayer(
-                            layer,
-                            layerNames: model.layers.map(\.displayName),
-                            layout: model.layout
-                        )
+                        explain.explainLayer(layer, context: model.context)
                     }
                     .disabled(explain.layer.isRunning)
                 }
