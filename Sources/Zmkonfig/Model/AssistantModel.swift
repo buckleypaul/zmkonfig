@@ -177,7 +177,9 @@ final class AssistantModel {
                     system: systemPrompt(),
                     messages: history,
                     tools: AssistantTools.all,
-                    maxTokens: 4096,
+                    // The kit's 16k default: the budget covers thinking and
+                    // the turn together, and a turn cut short mid-loop is a
+                    // half-written tool call, not just a short answer.
                     effort: effort
                 )
             } catch {
@@ -203,8 +205,21 @@ final class AssistantModel {
             let text = turn.text.trimmingCharacters(in: .whitespacesAndNewlines)
             if !text.isEmpty { prose = text }
 
+            // Checked before the tools run, not after. A turn that hit
+            // `max_tokens` stopped in the middle of writing itself, so its
+            // last tool call may be one the model had not finished asking
+            // for — running it and going round again would build the rest of
+            // the conversation on a turn that never happened. The staged
+            // edits from earlier, complete rounds are kept; `finish` says the
+            // answer is partial so the user does not read them as the whole
+            // of what was suggested.
+            guard !turn.wasTruncated else {
+                finish(prose: prose, staged: staged, ending: .truncated)
+                return
+            }
+
             guard !turn.toolUses.isEmpty else {
-                finish(prose: prose, staged: staged, cappedOut: false)
+                finish(prose: prose, staged: staged, ending: .complete)
                 return
             }
 
@@ -227,7 +242,7 @@ final class AssistantModel {
             history.append(.toolResults(results))
         }
 
-        finish(prose: prose, staged: staged, cappedOut: true)
+        finish(prose: prose, staged: staged, ending: .roundsExhausted)
     }
 
     /// Edits the assistant message this turn is filling in, if it is still there.
@@ -256,13 +271,36 @@ final class AssistantModel {
         }
     }
 
-    private func finish(prose: String, staged: [ProposedEdit], cappedOut: Bool) {
+    /// Why a turn stopped. Only `.complete` means the model was finished.
+    private enum Ending {
+        /// The model answered and asked for no more tools.
+        case complete
+        /// `maxRounds` of tool calls went by without an answer.
+        case roundsExhausted
+        /// The turn hit `max_tokens` and is a fragment.
+        case truncated
+    }
+
+    private func finish(prose: String, staged: [ProposedEdit], ending: Ending) {
         var text = prose
-        if cappedOut {
+        switch ending {
+        case .complete:
+            break
+        case .roundsExhausted:
             let note = """
                 I stopped after \(Self.maxRounds) rounds of looking things up \
                 without reaching an answer. Nothing has been changed. Try asking \
                 for one thing at a time, or tell me the layer and key you mean.
+                """
+            text = text.isEmpty ? note : text + "\n\n" + note
+        case .truncated:
+            // Said plainly because anything above it is a fragment: the prose
+            // may stop mid-sentence and any card below it is whatever was
+            // staged before the cut, not the whole suggestion.
+            let note = """
+                I ran out of room part-way through that answer and stopped, so \
+                whatever is above may be incomplete — including any changes I \
+                had suggested. Try asking for something narrower.
                 """
             text = text.isEmpty ? note : text + "\n\n" + note
         }

@@ -46,6 +46,40 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
     }
 }
 
+/// Serves a scripted list of response bodies, one per request, and counts the
+/// requests made.
+///
+/// The count is the point. A tool loop that fails to stop does not return a
+/// wrong answer — it asks for another turn. Only counting requests catches
+/// that; asserting on the final turn cannot tell a loop that stopped from one
+/// that went round again and happened to end up somewhere similar.
+final class StubSequence: @unchecked Sendable {
+    private let bodies: [String]
+    private var index = 0
+    private let lock = NSLock()
+
+    init(_ bodies: [String]) { self.bodies = bodies }
+
+    /// How many requests have been served.
+    var requestCount: Int { lock.withLock { index } }
+
+    /// A client that answers from the script. A request past the end of the
+    /// script is answered rather than failed — a loop that overruns should be
+    /// caught by `requestCount`, not by a transport error that reads like an
+    /// unrelated bug.
+    func client() -> AnthropicClient {
+        StubProtocol.client { [self] _ in
+            lock.withLock {
+                let body = index < bodies.count
+                    ? bodies[index]
+                    : #"{"content": [{"type": "text", "text": "overrun"}], "stop_reason": "end_turn"}"#
+                index += 1
+                return (200, Data(body.utf8))
+            }
+        }
+    }
+}
+
 @Suite("Anthropic client", .serialized)
 struct AnthropicClientTests {
     @Test("Listing models sends the auth and version headers")
@@ -430,6 +464,128 @@ struct AnthropicClientTests {
         let turn = try await client.converse(model: "m", system: "s", messages: [.user("hi")])
         #expect(turn.text.isEmpty)
         #expect(turn.toolUses.isEmpty)
+    }
+
+    // MARK: - Truncation
+
+    @Test("A conversation turn asks for enough tokens for thinking and the turn")
+    func converseAsksForEnoughTokens() async throws {
+        let client = StubProtocol.client(StubProtocol.json(200, #"""
+            {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn"}
+            """#))
+        _ = try await client.converse(model: "m", system: "s", messages: [.user("hi")])
+
+        // The same budget `complete` asks for, and a value every current model
+        // accepts — the model id is chosen at runtime, so a ceiling only some
+        // models allow would start 400ing a key set to Haiku.
+        #expect(try Self.lastBody()["max_tokens"] as? Int == 16_000)
+    }
+
+    @Test("A turn cut off at the token limit says so, and still shows what it asked for")
+    func converseReportsTruncation() async throws {
+        // What a truncated tool round looks like on the wire: a call the model
+        // was part-way through asking for when the budget ran out.
+        let client = StubProtocol.client(StubProtocol.json(200, #"""
+            {"content": [
+                {"type": "text", "text": "Let me look at layer 1 first"},
+                {"type": "tool_use", "id": "toolu_1", "name": "read_layer",
+                 "input": {"layer": 1}}
+            ], "stop_reason": "max_tokens"}
+            """#))
+
+        let turn = try await client.converse(
+            model: "m", system: "s", messages: [.user("swap tab for escape")]
+        )
+        #expect(turn.wasTruncated)
+        #expect(turn.stopReason == "max_tokens")
+        // The calls are still decoded: the caller has to be able to say what
+        // was cut off, and dropping them would hide it rather than report it.
+        #expect(turn.toolUses.map(\.id) == ["toolu_1"])
+    }
+
+    @Test("A turn that finished is not reported as truncated")
+    func converseDoesNotOverreportTruncation() async throws {
+        for stopReason in ["end_turn", "tool_use", "stop_sequence"] {
+            let client = StubProtocol.client(StubProtocol.json(200, """
+                {"content": [{"type": "text", "text": "ok"}], "stop_reason": "\(stopReason)"}
+                """))
+            let turn = try await client.converse(
+                model: "m", system: "s", messages: [.user("hi")]
+            )
+            #expect(turn.wasTruncated == false)
+        }
+    }
+
+    @Test("A truncated turn mid tool loop stops the loop rather than answering it")
+    func truncationStopsTheToolLoop() async throws {
+        // Round one is an ordinary tool round; round two is cut off part-way
+        // through asking for another. A loop that ignores the truncation runs
+        // that second call, sends its result, and asks for a third turn.
+        let sequence = StubSequence([
+            #"""
+            {"content": [
+                {"type": "tool_use", "id": "toolu_1", "name": "read_layer",
+                 "input": {"layer": 0}}
+            ], "stop_reason": "tool_use"}
+            """#,
+            #"""
+            {"content": [
+                {"type": "text", "text": "Layer 0 has Tab on the left"},
+                {"type": "tool_use", "id": "toolu_2", "name": "set_binding",
+                 "input": {"layer": 0}}
+            ], "stop_reason": "max_tokens"}
+            """#,
+        ])
+        let client = sequence.client()
+
+        // The loop `AssistantModel` runs, reduced to the part under test: ask,
+        // stop if the turn is a fragment, otherwise answer the tools and go
+        // round again.
+        var history: [ClaudeMessage] = [.user("put escape on the left thumb")]
+        var toolsRun: [String] = []
+        var truncated = false
+
+        for _ in 0..<12 {
+            let turn = try await client.converse(
+                model: "m", system: "s", messages: history,
+                tools: [ClaudeTool(name: "read_layer", description: "d", inputSchema: .object([:]))]
+            )
+            if turn.wasTruncated {
+                truncated = true
+                break
+            }
+            if turn.toolUses.isEmpty { break }
+            history.append(.assistant(text: turn.text, toolUses: turn.toolUses))
+            history.append(.toolResults(turn.toolUses.map { use in
+                toolsRun.append(use.name)
+                return ClaudeToolResult(toolUseID: use.id, content: "ok")
+            }))
+        }
+
+        #expect(truncated)
+        // Two turns asked for, and no third: the loop stopped rather than
+        // continuing on a turn the model never finished writing.
+        #expect(sequence.requestCount == 2)
+        // The truncated turn's call was never run — it may be the front half
+        // of one the model had not finished asking for.
+        #expect(toolsRun == ["read_layer"])
+    }
+
+    @Test("A refusal is still checked before the content, even when content is present")
+    func refusalIsCheckedBeforeContent() async throws {
+        // A refusal is an HTTP 200, so the check has to come first. This body
+        // carries a tool_use block a content-first reader would happily return
+        // as a turn to act on.
+        let client = StubProtocol.client(StubProtocol.json(200, #"""
+            {"content": [
+                {"type": "tool_use", "id": "toolu_1", "name": "set_binding", "input": {}}
+            ], "stop_reason": "refusal",
+             "stop_details": {"type": "refusal", "explanation": "policy"}}
+            """#))
+
+        await #expect(throws: AnthropicError.refused(explanation: "policy")) {
+            _ = try await client.converse(model: "m", system: "s", messages: [.user("hi")])
+        }
     }
 
     @Test("JSONValue round-trips as plain JSON, not a tagged enum")
