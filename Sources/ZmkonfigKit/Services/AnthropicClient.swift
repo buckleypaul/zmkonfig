@@ -182,7 +182,7 @@ public struct AnthropicClient: Sendable {
             effort: effort
         )
         guard !turn.text.isEmpty else { throw AnthropicError.emptyResponse }
-        return ClaudeCompletion(text: turn.text, wasTruncated: turn.stopReason == "max_tokens")
+        return ClaudeCompletion(text: turn.text, wasTruncated: turn.wasTruncated)
     }
 
     func applyHeaders(to request: inout URLRequest) {

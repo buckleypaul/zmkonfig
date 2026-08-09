@@ -172,6 +172,16 @@ public struct ClaudeTurn: Sendable, Equatable {
     public let toolUses: [ClaudeToolUse]
     public let stopReason: String?
 
+    /// The model hit `max_tokens` before it finished this turn.
+    ///
+    /// Spelled the same way `ClaudeCompletion.wasTruncated` is, and computed
+    /// rather than stored so there is only one place that knows what
+    /// `stop_reason` means. Mid-loop this is worse than a cut-off answer: the
+    /// turn's last `tool_use` may be the front half of a call the model had not
+    /// finished writing, so a caller that runs the tools and goes round again
+    /// is acting on a turn that was never completed. Stop instead.
+    public var wasTruncated: Bool { stopReason == "max_tokens" }
+
     public init(text: String, toolUses: [ClaudeToolUse], stopReason: String?) {
         self.text = text
         self.toolUses = toolUses
@@ -192,12 +202,23 @@ extension AnthropicClient {
     /// `effort` is omitted unless a caller passes one, for the same reason
     /// `complete` omits it: a model that does not accept `output_config`
     /// answers with a 400, and the model id is chosen at runtime.
+    ///
+    /// `maxTokens` is the same 16k `complete` uses, and for the same reasons.
+    /// It is the budget for thinking *and* the turn together, and thinking is
+    /// on by default on current models, so a tight cap truncates the turn
+    /// rather than the reasoning — mid-loop that means a half-written tool
+    /// call. The ceiling has to be one every model accepts, because the model
+    /// id is chosen at runtime and a value only some models allow would 400 a
+    /// key set to Haiku: 16k is comfortably under the smallest output limit
+    /// any model the API still serves imposes (Haiku 4.5 caps at 64k, every
+    /// current Opus and Sonnet at 128k), and still small enough to answer
+    /// inside the timeout a non-streaming request has to finish in.
     public func converse(
         model: String,
         system: String,
         messages: [ClaudeMessage],
         tools: [ClaudeTool] = [],
-        maxTokens: Int = 4096,
+        maxTokens: Int = 16_000,
         effort: ClaudeEffort? = nil
     ) async throws -> ClaudeTurn {
         var request = URLRequest(url: baseURL.appending(path: "v1/messages"))
