@@ -58,7 +58,8 @@ struct SaveSheet: View {
                 Button(hasReview ? "Explain again" : "Explain changes") {
                     explain.explainChanges(
                         diff: model.pendingDiff,
-                        path: model.keymapRelativePath
+                        path: model.keymapRelativePath,
+                        context: model.context
                     )
                 }
                 .disabled(explain.changes.isRunning)

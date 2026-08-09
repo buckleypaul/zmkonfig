@@ -31,11 +31,11 @@ final class ExplainModel {
     /// it is about to draw is still current.
     static func layerSubject(_ layerID: Int) -> String { "layer-\(layerID)" }
 
-    func explainLayer(_ layer: KeymapLayer, layerNames: [String], layout: [KeyPosition]) {
+    func explainLayer(_ layer: KeymapLayer, context: KeymapContext) {
         self.layer.run(
             subject: Self.layerSubject(layer.id),
             system: Self.layerSystemPrompt,
-            prompt: Self.layerPrompt(for: layer, layerNames: layerNames, layout: layout),
+            prompt: Self.layerPrompt(for: layer, context: context),
             // A few paragraphs of prose about a grid the model can already see.
             // Nothing here needs deep thinking, and the default of `high` is
             // most of the spinner.
@@ -44,8 +44,17 @@ final class ExplainModel {
     }
 
     private static let layerSystemPrompt = """
-        You are helping someone read a ZMK keyboard keymap. You will be given one \
-        layer of a keymap laid out the way the keys physically sit under the hands: \
+        You are helping someone read a ZMK keyboard keymap.
+
+        You are given, in this order: a short primer on how ZMK layers and \
+        hold-taps work; the definitions of the behaviors this keymap binds, \
+        including the properties that decide whether a key is a home-row mod; \
+        every layer by number and name; and every combo. Use them. `&hml` means \
+        what its node says it means, and a layer is only unreachable if nothing \
+        in those lists reaches it — combos included.
+
+        Last comes the layer to explain, laid out the way the keys physically sit \
+        under the hands: \
         one line per row, columns aligned, and on a split board a gap between the \
         halves. Read it spatially — which finger reaches a key, and which row it \
         sits on, is most of what the layer means. An index legend follows the grid \
@@ -59,36 +68,47 @@ final class ExplainModel {
         paragraphs, and do not restate the list back key by key.
         """
 
-    private static func layerPrompt(
-        for layer: KeymapLayer, layerNames: [String], layout: [KeyPosition]
-    ) -> String {
-        let names = layerNames.enumerated()
-            .map { "\($0.offset) = \($0.element)" }
-            .joined(separator: ", ")
-        let header = """
-            Layer \(layer.id), "\(layer.displayName)".
-            Layers in this keymap: \(names).
-            """
-
+    /// The context pack first, then the layer.
+    ///
+    /// The pack is the same text for every layer of a keymap, so putting it
+    /// ahead of the layer keeps the constant part of the prompt a constant
+    /// prefix and lets the cache hold across "explain this one" and "now
+    /// explain that one". The layer list it carries names every layer — that is
+    /// where the layer names this prompt used to be handed separately come
+    /// from, along with each layer's node name and key count.
+    private static func layerPrompt(for layer: KeymapLayer, context: KeymapContext) -> String {
         // The grid, the legend and the no-layout fallback all live in
         // `KeymapDigest`, because the assistant's `read_layer` tool has to
         // describe a layer in exactly the words this prompt does — see the note
         // there on why one renderer rather than two.
-        return """
-            \(header)
+        """
+        \(ContextPack.forLayer(layer, context: context))
 
-            \(KeymapDigest.layer(layer, layout: layout))
-            """
+        ## The layer to explain
+
+        Layer \(layer.id), "\(layer.displayName)".
+
+        \(KeymapDigest.layer(layer, layout: context.layout))
+        """
     }
 
     // MARK: - Changes
 
-    func explainChanges(diff: String, path: String?) {
+    func explainChanges(diff: String, path: String?, context: KeymapContext) {
         let (body, wasTruncated) = Self.clip(diff)
         changes.run(
             subject: Self.changesSubject(for: diff),
             system: Self.changesSystemPrompt,
+            // Pack first, diff last: the diff is what changes between calls,
+            // and a diff in front of the pack would make every review a cache
+            // miss on the whole prompt. The pack is the whole-keymap one — a
+            // diff can touch any layer, and the behavior it adds the first use
+            // of is exactly the change worth reviewing.
             prompt: """
+                \(ContextPack.forKeymap(context))
+
+                ## The change to review
+
                 Unified diff of \(path ?? "the keymap")\
                 \(wasTruncated ? ", truncated after \(Self.diffCharacterLimit) characters" : ""):
 
@@ -120,6 +140,13 @@ final class ExplainModel {
     private static let changesSystemPrompt = """
         You are reviewing a change to a ZMK keymap file before it is committed and \
         pushed to a firmware build.
+
+        Before the diff you are given the keymap as it stands: a primer on ZMK \
+        layers and hold-taps, the definitions of every behavior and macro the \
+        keymap declares, every layer by number and name, and every combo. The \
+        diff only shows the lines that moved, so that is where the context for \
+        them is — a key position in the diff means a key in those layers, and a \
+        layer left with no way back is one no binding *and no combo* returns from.
 
         Say in plain language what the change does to the keyboard — which keys move, \
         what they do now, which layers and combos are affected. Then flag anything \
