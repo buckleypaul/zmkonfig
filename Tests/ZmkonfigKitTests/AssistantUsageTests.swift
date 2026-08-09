@@ -127,6 +127,70 @@ struct AssistantUsageTests {
         #expect(outcome.result.content.contains("layer 0 key 3"))
     }
 
+    // MARK: - The structured walk
+
+    /// `AppModel` used to walk the keymap a second time for its delete
+    /// confirmation, and that copy never looked at a behavior's phandle-list
+    /// properties — so a `sensor-bindings` still pointing at a behavior showed
+    /// as nothing referring to it, and the user deleted on that assurance.
+    /// Both readers now come through here.
+    @Test("A phandle-list property is a site in the structured walk, named as data")
+    func propertySiteIsStructured() throws {
+        let sites = AssistantTools.references(to: "&inner", in: try Self.context(Self.wrapping))
+        #expect(sites.contains { $0.site == .behaviorProperty(label: "sticky_tap", property: "sensor-bindings") })
+    }
+
+    @Test("A layer site carries its key positions as numbers, not only as prose")
+    func layerSiteCarriesKeys() throws {
+        let sites = AssistantTools.references(to: "&kp", in: try Self.context(Self.wrapping))
+        #expect(sites.contains { $0.site == .layer(id: 0, keys: [0, 2]) })
+    }
+
+    @Test("A macro site carries its step count as a number")
+    func macroSiteCarriesSteps() throws {
+        let sites = AssistantTools.references(to: "&ht", in: try Self.context(Self.wrapping))
+        #expect(sites.contains { $0.site == .macroSequence(label: "email", steps: 2) })
+    }
+
+    @Test("A combo site carries its node name")
+    func comboSiteCarriesName() throws {
+        let sites = AssistantTools.references(to: "&kp", in: try Self.context(Self.wrapping))
+        #expect(sites.contains { $0.site == .combo(nodeName: "combo-kp") })
+    }
+
+    @Test("Nothing referring to it is an empty list, not a sentence")
+    func noSitesIsEmpty() throws {
+        #expect(AssistantTools.references(to: "&qt", in: try Self.cradioContext()).isEmpty)
+    }
+
+    /// The two must not drift apart: if `usage` ever grows a traversal of its
+    /// own again, its sentence will stop being exactly these descriptions.
+    @Test("The sentence is rendered from the walk rather than from a second one")
+    func proseIsRenderedFromTheWalk() throws {
+        let context = try Self.context(Self.wrapping)
+        let sites = AssistantTools.references(to: "&kp", in: context)
+        let note = AssistantTools.usage(of: "&kp", in: context)
+        #expect(!sites.isEmpty)
+        #expect(note.contains(sites.map(\.description).joined(separator: "; ")))
+    }
+
+    @Test("A bare label and a `&`-prefixed one find the same sites")
+    func labelFormsAgree() throws {
+        let context = try Self.context(Self.wrapping)
+        #expect(
+            AssistantTools.references(to: "kp", in: context)
+                == AssistantTools.references(to: "&kp", in: context)
+        )
+    }
+
+    @Test("A reference carrying parameters is matched on its behavior, not its text")
+    func matchingGoesThroughTheParser() throws {
+        // `sticky_tap` wraps `<&sk_shift LSHFT>`, so a walker comparing strings
+        // to `&sk_shift` finds nothing.
+        let sites = AssistantTools.references(to: "&sk_shift", in: try Self.context(Self.wrapping))
+        #expect(sites.contains { $0.site == .behaviorBindings(label: "sticky_tap") })
+    }
+
     // MARK: - Fixtures
 
     private static func cradioContext() throws -> KeymapContext {

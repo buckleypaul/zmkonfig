@@ -366,7 +366,7 @@ struct BehaviorEditorView: View {
             Button("Delete", role: .destructive) { model.removeBehavior(id: behavior.id) }
             Button("Cancel", role: .cancel) {}
         } message: {
-            let uses = model.usage(ofBehaviorLabelled: behavior.label)
+            let uses = model.usage(ofLabel: behavior.label)
             Text(uses.isEmpty
                  ? "Nothing this editor can see binds `&\(behavior.label)`."
                  : "`&\(behavior.label)` is still bound by \(uses.joined(separator: ", ")). "

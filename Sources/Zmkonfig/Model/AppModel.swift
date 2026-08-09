@@ -532,9 +532,12 @@ final class AppModel {
         edit("Could not remove that behavior") { try $0.removeBehavior(id: id) }
     }
 
-    /// The bindings in the keymap that would stop resolving if this behavior
-    /// went away. Shown before the deletion, not after it.
-    func usage(ofBehaviorLabelled label: String) -> [String] {
+    /// What in the keymap would stop resolving if `&label` went away. Shown
+    /// before the deletion, not after it.
+    ///
+    /// Labelled for a behavior *or* a macro: both are referred to as `&label`
+    /// and both delete confirmations ask the same question.
+    func usage(ofLabel label: String) -> [String] {
         references(to: "&\(label)")
     }
 
@@ -564,30 +567,32 @@ final class AppModel {
         edit("Could not remove that macro") { try $0.removeMacro(id: id) }
     }
 
-    /// Every place in the keymap that binds `code`, as a sentence.
+    /// Every place in the keymap that refers to `code`, as phrases for the
+    /// delete confirmation.
     ///
-    /// Only what the editor models is searched — a reference inside an include
-    /// or a node it could not parse cannot be found — so this is a warning and
-    /// never a guarantee that a deletion is safe. Same limit, and the same
-    /// reason for it, as ``KeymapFile/layerReferencesAffected(byRemoving:)``.
+    /// The walk is ``AssistantTools/references(to:in:)``'s, not this file's. It
+    /// used to be a second traversal here, and it was the weaker of the two:
+    /// it never looked at a behavior's phandle-list properties, so a
+    /// `sensor-bindings` still pointing at a behavior was reported as nothing
+    /// referring to it — a confirmation dialog wrong in the direction that
+    /// costs the user something.
+    ///
+    /// Only what the editor models is searched — a node override, or a
+    /// `#define` that expands to a reference, cannot be found — so this is a
+    /// warning and never a guarantee that a deletion is safe. Same limit, and
+    /// the same reason for it, as
+    /// ``KeymapFile/layerReferencesAffected(byRemoving:)``.
     private func references(to code: String) -> [String] {
-        var found: [String] = []
-        for layer in layers {
-            for (key, binding) in layer.bindings.enumerated() where binding.behavior == code {
-                found.append("layer \(layer.id) (\(layer.displayName)) key \(key)")
-            }
+        AssistantTools.references(to: code, in: context).map { reference in
+            // Only the layer case is re-worded, and only because this side
+            // knows something the kit does not: what the layer is called. A
+            // dialog naming "layer 3" alone makes the user go and look.
+            guard case .layer(let id, let keys) = reference.site,
+                  let layer = layers.first(where: { $0.id == id })
+            else { return reference.description }
+            let numbers = keys.map(String.init).joined(separator: ", ")
+            return "layer \(id) (\(layer.displayName)) key\(keys.count == 1 ? "" : "s") \(numbers)"
         }
-        for combo in combos where combo.binding.behavior == code {
-            found.append("combo `\(combo.nodeName)`")
-        }
-        for macro in macros where macro.bindings.contains(where: { $0.behavior == code }) {
-            found.append("macro `&\(macro.label)`")
-        }
-        for behavior in behaviors
-        where behavior.bindings.contains(where: { $0.split(separator: " ").first.map(String.init) == code }) {
-            found.append("behavior `&\(behavior.label)`")
-        }
-        return found
     }
 
     // MARK: - Layers

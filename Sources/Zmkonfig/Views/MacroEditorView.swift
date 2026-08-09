@@ -216,7 +216,7 @@ struct MacroEditorView: View {
             Button("Delete", role: .destructive) { model.removeMacro(id: macro.id) }
             Button("Cancel", role: .cancel) {}
         } message: {
-            let uses = model.usage(ofBehaviorLabelled: macro.label)
+            let uses = model.usage(ofLabel: macro.label)
             Text(uses.isEmpty
                  ? "Nothing this editor can see binds `&\(macro.label)`."
                  : "`&\(macro.label)` is still bound by \(uses.joined(separator: ", ")). "

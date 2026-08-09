@@ -1448,19 +1448,45 @@ public enum AssistantTools {
         list(keymap.macros) { "`&\($0.label)`" }
     }
 
-    /// What still refers to a behavior or macro about to be removed.
+    /// One place in the keymap that refers to a behavior or a macro.
     ///
-    /// Every reference the editor models is walked: a layer's bindings, a
-    /// combo's binding, another behavior's `bindings` and its phandle-list
-    /// properties, and a macro's sequence. A hold-tap wrapping the thing being
-    /// removed used to go unmentioned, which is worse than saying nothing —
-    /// the answer read as "nothing binds it".
+    /// Carries both what the site *is* and how it reads in a sentence, because
+    /// the two readers want different things from the same walk: the model is
+    /// told prose, and the app's delete confirmation re-words the layer case to
+    /// add the layer's display name, which the kit does not deal in. Anything
+    /// that needs a third presentation switches on ``site`` rather than
+    /// re-walking the keymap.
+    public struct KeymapReference: Sendable, Equatable {
+        public enum Site: Sendable, Equatable {
+            /// Keys on a layer whose binding invokes it, by ZMK layer number.
+            case layer(id: Int, keys: [Int])
+            case combo(nodeName: String)
+            /// The `bindings` of another behavior — a hold-tap wrapping it.
+            case behaviorBindings(label: String)
+            /// A phandle-list property of another behavior, `sensor-bindings`.
+            case behaviorProperty(label: String, property: String)
+            case macroSequence(label: String, steps: Int)
+        }
+
+        public let site: Site
+        /// How this site reads inside ``AssistantTools/usage(of:in:)``.
+        public let description: String
+    }
+
+    /// Every reference to a behavior or macro that the editor can find.
     ///
-    /// What is still *not* walked is devicetree this editor does not model: a
-    /// node override outside the keymap's own nodes, a `#define` that expands
-    /// to a reference, a node no reader claims. So the sentence keeps saying
-    /// where it looked rather than declaring the thing unused.
-    static func usage(of behavior: String, in context: KeymapContext) -> String {
+    /// A layer's bindings, a combo's binding, another behavior's `bindings` and
+    /// its phandle-list properties, and a macro's sequence. Matching goes
+    /// through `BindingParser` rather than comparing text, so `<&sk_shift
+    /// LSHFT>` is found by its behavior token rather than by string shape.
+    ///
+    /// What is deliberately *not* walked is devicetree this editor does not
+    /// model: a node override outside the keymap's own nodes, a `#define` that
+    /// expands to a reference, a node no reader claims. Every caller has to
+    /// present this as "what was found", never as proof that a removal is safe.
+    public static func references(
+        to behavior: String, in context: KeymapContext
+    ) -> [KeymapReference] {
         let label = behavior.hasPrefix("&") ? String(behavior.dropFirst()) : behavior
         let reference = "&" + label
 
@@ -1470,41 +1496,70 @@ public enum AssistantTools {
             BindingParser.parse(text).contains { $0.behavior == reference }
         }
 
-        var sites: [String] = []
+        var found: [KeymapReference] = []
         for layer in context.layers {
             let positions = layer.bindings.indices.filter { layer.bindings[$0].behavior == reference }
             guard !positions.isEmpty else { continue }
-            sites.append("""
-                layer \(layer.id) key\(positions.count == 1 ? "" : "s") \
-                \(positions.map(String.init).joined(separator: ", "))
-                """)
+            found.append(KeymapReference(
+                site: .layer(id: layer.id, keys: Array(positions)),
+                description: """
+                    layer \(layer.id) key\(positions.count == 1 ? "" : "s") \
+                    \(positions.map(String.init).joined(separator: ", "))
+                    """
+            ))
         }
         for combo in context.combos where combo.binding.behavior == reference {
-            sites.append("combo `\(combo.nodeName)`")
+            found.append(KeymapReference(
+                site: .combo(nodeName: combo.nodeName),
+                description: "combo `\(combo.nodeName)`"
+            ))
         }
         // A behavior does not refer to itself, and the one being removed is
         // going away anyway — skipping it keeps "&ht is bound inside &ht" out
         // of an answer about removing `&ht`.
         for other in context.keymap?.behaviors ?? [] where other.label != label {
             if other.bindings.contains(where: refers) {
-                sites.append("the `bindings` of the behavior `&\(other.label)`")
+                found.append(KeymapReference(
+                    site: .behaviorBindings(label: other.label),
+                    description: "the `bindings` of the behavior `&\(other.label)`"
+                ))
             }
             for property in other.properties {
                 guard case .references(let entries) = property.value,
                       entries.contains(where: refers)
                 else { continue }
-                sites.append("`\(property.name)` on the behavior `&\(other.label)`")
+                found.append(KeymapReference(
+                    site: .behaviorProperty(label: other.label, property: property.name),
+                    description: "`\(property.name)` on the behavior `&\(other.label)`"
+                ))
             }
         }
         for macro in context.keymap?.macros ?? [] where macro.label != label {
             let steps = macro.bindings.filter { $0.behavior == reference }.count
             guard steps > 0 else { continue }
-            sites.append("""
-                the sequence of the macro `&\(macro.label)` (\(steps) \
-                step\(steps == 1 ? "" : "s"))
-                """)
+            found.append(KeymapReference(
+                site: .macroSequence(label: macro.label, steps: steps),
+                description: """
+                    the sequence of the macro `&\(macro.label)` (\(steps) \
+                    step\(steps == 1 ? "" : "s"))
+                    """
+            ))
         }
+        return found
+    }
 
+    /// What still refers to a behavior or macro about to be removed, as the
+    /// sentence the model reads before it stages a removal.
+    ///
+    /// The walk is ``references(to:in:)``'s; this only renders it. A hold-tap
+    /// wrapping the thing being removed used to go unmentioned, which is worse
+    /// than saying nothing — the answer read as "nothing binds it".
+    ///
+    /// The "was not checked" half of the empty answer is not boilerplate: it is
+    /// the only thing standing between a scoped search and the model telling a
+    /// user their behavior is unused.
+    static func usage(of behavior: String, in context: KeymapContext) -> String {
+        let sites = references(to: behavior, in: context).map(\.description)
         guard !sites.isEmpty else {
             return """
                 No layer, combo, other behavior or macro refers to it. Devicetree \
