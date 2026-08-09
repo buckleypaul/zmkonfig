@@ -1448,29 +1448,73 @@ public enum AssistantTools {
         list(keymap.macros) { "`&\($0.label)`" }
     }
 
-    /// What still binds a behavior about to be removed. Layers and combos only —
-    /// a reference from inside another behavior or a macro is not modelled, so
-    /// the sentence says where it looked rather than claiming the thing is
-    /// unused.
-    private static func usage(of behavior: String, in context: KeymapContext) -> String {
+    /// What still refers to a behavior or macro about to be removed.
+    ///
+    /// Every reference the editor models is walked: a layer's bindings, a
+    /// combo's binding, another behavior's `bindings` and its phandle-list
+    /// properties, and a macro's sequence. A hold-tap wrapping the thing being
+    /// removed used to go unmentioned, which is worse than saying nothing —
+    /// the answer read as "nothing binds it".
+    ///
+    /// What is still *not* walked is devicetree this editor does not model: a
+    /// node override outside the keymap's own nodes, a `#define` that expands
+    /// to a reference, a node no reader claims. So the sentence keeps saying
+    /// where it looked rather than declaring the thing unused.
+    static func usage(of behavior: String, in context: KeymapContext) -> String {
+        let label = behavior.hasPrefix("&") ? String(behavior.dropFirst()) : behavior
+        let reference = "&" + label
+
+        /// True when a devicetree cell — `&kp`, `&hml LSHFT A`, or a whole
+        /// `<&mo>, <&sk>` entry — invokes the thing being removed.
+        func refers(_ text: String) -> Bool {
+            BindingParser.parse(text).contains { $0.behavior == reference }
+        }
+
         var sites: [String] = []
         for layer in context.layers {
-            let positions = layer.bindings.indices.filter { layer.bindings[$0].behavior == behavior }
+            let positions = layer.bindings.indices.filter { layer.bindings[$0].behavior == reference }
             guard !positions.isEmpty else { continue }
             sites.append("""
                 layer \(layer.id) key\(positions.count == 1 ? "" : "s") \
                 \(positions.map(String.init).joined(separator: ", "))
                 """)
         }
-        for combo in context.combos where combo.binding.behavior == behavior {
+        for combo in context.combos where combo.binding.behavior == reference {
             sites.append("combo `\(combo.nodeName)`")
         }
+        // A behavior does not refer to itself, and the one being removed is
+        // going away anyway — skipping it keeps "&ht is bound inside &ht" out
+        // of an answer about removing `&ht`.
+        for other in context.keymap?.behaviors ?? [] where other.label != label {
+            if other.bindings.contains(where: refers) {
+                sites.append("the `bindings` of the behavior `&\(other.label)`")
+            }
+            for property in other.properties {
+                guard case .references(let entries) = property.value,
+                      entries.contains(where: refers)
+                else { continue }
+                sites.append("`\(property.name)` on the behavior `&\(other.label)`")
+            }
+        }
+        for macro in context.keymap?.macros ?? [] where macro.label != label {
+            let steps = macro.bindings.filter { $0.behavior == reference }.count
+            guard steps > 0 else { continue }
+            sites.append("""
+                the sequence of the macro `&\(macro.label)` (\(steps) \
+                step\(steps == 1 ? "" : "s"))
+                """)
+        }
+
         guard !sites.isEmpty else {
-            return "No layer and no combo binds it; other behaviors and macros were not checked."
+            return """
+                No layer, combo, other behavior or macro refers to it. Devicetree \
+                this editor does not model — a node override, a `#define` that \
+                expands to a reference — was not checked.
+                """
         }
         return """
-            It is still bound at \(sites.joined(separator: "; ")) — those bindings \
-            will not build once it is gone, so they have to change too.
+            It is still referred to at \(sites.joined(separator: "; ")) — those \
+            references will not build once it is gone, so they have to change too.
             """
     }
 
