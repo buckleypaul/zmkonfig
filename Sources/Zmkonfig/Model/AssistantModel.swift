@@ -501,6 +501,12 @@ final class AssistantModel {
         case .combo(let id):
             let name = app.combos.first { $0.id == id }?.nodeName ?? "?"
             lines.append("The user is editing the combo `\(name)`.")
+        case .behavior(let id):
+            let label = app.behaviors.first { $0.id == id }?.label ?? "?"
+            lines.append("The user is editing the behavior `&\(label)`.")
+        case .macro(let id):
+            let label = app.macros.first { $0.id == id }?.label ?? "?"
+            lines.append("The user is editing the macro `&\(label)`.")
         case nil:
             break
         }

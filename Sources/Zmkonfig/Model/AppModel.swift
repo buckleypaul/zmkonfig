@@ -2,10 +2,13 @@ import Foundation
 import Observation
 import ZmkonfigKit
 
-/// What the sidebar has selected: one layer to draw, or one combo to edit.
+/// What the sidebar has selected: one layer to draw, or one of the things the
+/// inspector edits.
 enum SidebarSelection: Hashable {
     case layer(Int)
     case combo(KeymapCombo.ID)
+    case behavior(KeymapBehavior.ID)
+    case macro(KeymapMacro.ID)
 }
 
 /// Everything the editor side of the app needs: the open repo, its keymap, the
@@ -33,7 +36,9 @@ final class AppModel {
     private(set) var hasUnsavedEdits = false
 
     // Metadata
-    private(set) var behaviors: [ZMKBehavior] = []
+    /// The vendored ZMK behavior metadata. The behaviors *this keymap* defines
+    /// are ``keymap``'s; these are the 15 stock ones every keymap can bind.
+    private(set) var stockBehaviors: [ZMKBehavior] = []
     private(set) var keycodes: [ZMKKeycode] = []
     /// The behavior index: the stock ZMK behaviors plus the ones this keymap
     /// defines for itself, rebuilt when either changes. ``BehaviorIndex`` owns
@@ -110,6 +115,20 @@ final class AppModel {
         return combos.first { $0.id == id }
     }
 
+    var behaviors: [KeymapBehavior] { keymap?.behaviors ?? [] }
+
+    var macros: [KeymapMacro] { keymap?.macros ?? [] }
+
+    var selectedBehavior: KeymapBehavior? {
+        guard case .behavior(let id) = sidebarSelection else { return nil }
+        return behaviors.first { $0.id == id }
+    }
+
+    var selectedMacro: KeymapMacro? {
+        guard case .macro(let id) = sidebarSelection else { return nil }
+        return macros.first { $0.id == id }
+    }
+
     /// Everything about the combos that would stop the keymap being written.
     ///
     /// Recomputed only when the keymap or the layout changes, because the
@@ -143,7 +162,7 @@ final class AppModel {
     /// knows nothing about. ``BehaviorIndex`` reads them out of the parsed
     /// keymap so they can be picked even on keys that do not already use them.
     private func rebuildBehaviorIndex() {
-        behaviorIndex = BehaviorIndex(stock: behaviors, keymap: keymap)
+        behaviorIndex = BehaviorIndex(stock: stockBehaviors, keymap: keymap)
     }
 
     /// What the keymap looks like to a feature that only reads it — the
@@ -210,7 +229,7 @@ final class AppModel {
             let loaded = try await Task.detached {
                 (behaviors: try AppResources.loadBehaviors(), keycodes: try AppResources.loadKeycodes())
             }.value
-            behaviors = loaded.behaviors
+            stockBehaviors = loaded.behaviors
             keycodes = loaded.keycodes
             rebuildBehaviorIndex()
         } catch let failure {
@@ -407,11 +426,44 @@ final class AppModel {
             self.error = AppError(title: failureTitle, error: error)
             return false
         }
+        // What `&hml` is, and whether there is an `&hml` at all, is derived from
+        // these — so defining a behavior has to reach the picker without a
+        // reload. Guarded because a plain key edit changes neither and rebuilding
+        // walks every binding in the keymap.
+        let definitionsChanged = file.behaviors != keymap?.behaviors || file.macros != keymap?.macros
         keymap = file
         hasUnsavedEdits = true
         notice = nil
+        if definitionsChanged { rebuildBehaviorIndex() }
         refreshComboProblems()
+        reconcileSelection()
         return true
+    }
+
+    /// Puts the selection back on something that still exists.
+    ///
+    /// Adding or removing a layer renumbers the ones after it, so a stored layer
+    /// number can stop naming a layer; removing a behavior, macro or combo
+    /// leaves the sidebar pointing at an id nothing answers to. Both leave the
+    /// inspector drawing a hint where an editor was, which reads as the edit
+    /// having failed.
+    private func reconcileSelection() {
+        let stillThere: Bool = switch sidebarSelection {
+        case .layer(let id): layers.contains { $0.id == id }
+        case .combo(let id): combos.contains { $0.id == id }
+        case .behavior(let id): behaviors.contains { $0.id == id }
+        case .macro(let id): macros.contains { $0.id == id }
+        case .none: true
+        }
+        if !stillThere {
+            // Back to a layer, which is what the board is drawing anyway.
+            let fallback = selectedLayerID.flatMap { id in layers.first { $0.id == id } }
+                ?? layers.first
+            sidebarSelection = fallback.map { .layer($0.id) }
+        }
+        if let selected = selectedLayerID, !layers.contains(where: { $0.id == selected }) {
+            selectedLayerID = layers.first?.id
+        }
     }
 
     // MARK: - Combos
@@ -435,9 +487,151 @@ final class AppModel {
 
     func removeCombo(id: KeymapCombo.ID) {
         edit("Could not remove that combo") { $0.removeCombo(id: id) }
-        if selectedComboID == id {
-            sidebarSelection = selectedLayerID.map { .layer($0) }
+    }
+
+    // MARK: - Behaviors
+
+    func updateBehavior(_ behavior: KeymapBehavior) {
+        edit("Could not update that behavior") { try $0.upsertBehavior(behavior) }
+    }
+
+    /// Defines a behavior of `kind` and selects it, so the inspector opens on
+    /// the fields the user has to fill in.
+    ///
+    /// It is deliberately created incomplete: a hold-tap arrives wrapping
+    /// `&kp`/`&kp` and a mod-morph with no `mods`, because the alternative is
+    /// inventing a default for a property whose whole point is that the user
+    /// chooses it. ``BehaviorWriter/problems(with:)`` says what is still missing,
+    /// and the editor shows it — the same sentences the assistant is told.
+    func addBehavior(kind: BehaviorKind) {
+        guard let file = keymap else { return }
+        let label = file.uniqueNodeName(
+            startingFrom: kind.rawValue, separator: "_", taken: file.modelledNodeNames
+        )
+        let bindings: [String] = switch kind.bindings {
+        case .none: []
+        case .phandles(let count), .phandleArray(.some(let count)):
+            Array(repeating: "&kp", count: count)
+        case .phandleArray(.none): ["&kp", "&kp"]
         }
+        let behavior = KeymapBehavior(
+            nodeName: label,
+            label: label,
+            compatible: kind.compatible,
+            bindingCells: kind.bindingCells,
+            bindings: bindings,
+            properties: kind.requiredProperties.map {
+                BehaviorProperty(name: $0, value: BehaviorPropertyShape.shape(of: $0).initialValue)
+            }
+        )
+        guard edit("Could not add a behavior", { try $0.upsertBehavior(behavior) }) else { return }
+        sidebarSelection = .behavior(behavior.id)
+    }
+
+    func removeBehavior(id: KeymapBehavior.ID) {
+        edit("Could not remove that behavior") { try $0.removeBehavior(id: id) }
+    }
+
+    /// The bindings in the keymap that would stop resolving if this behavior
+    /// went away. Shown before the deletion, not after it.
+    func usage(ofBehaviorLabelled label: String) -> [String] {
+        references(to: "&\(label)")
+    }
+
+    // MARK: - Macros
+
+    func updateMacro(_ macro: KeymapMacro) {
+        edit("Could not update that macro") { try $0.upsertMacro(macro) }
+    }
+
+    func addMacro() {
+        guard let file = keymap else { return }
+        let label = file.uniqueNodeName(
+            startingFrom: "macro", separator: "_", taken: file.modelledNodeNames
+        )
+        let macro = KeymapMacro(
+            nodeName: label,
+            label: label,
+            compatible: MacroKind.plain.compatible,
+            bindingCells: MacroKind.plain.bindingCells,
+            bindings: [KeyBinding(behavior: "&kp", params: [BindingParam(value: "A")])]
+        )
+        guard edit("Could not add a macro", { try $0.upsertMacro(macro) }) else { return }
+        sidebarSelection = .macro(macro.id)
+    }
+
+    func removeMacro(id: KeymapMacro.ID) {
+        edit("Could not remove that macro") { try $0.removeMacro(id: id) }
+    }
+
+    /// Every place in the keymap that binds `code`, as a sentence.
+    ///
+    /// Only what the editor models is searched — a reference inside an include
+    /// or a node it could not parse cannot be found — so this is a warning and
+    /// never a guarantee that a deletion is safe. Same limit, and the same
+    /// reason for it, as ``KeymapFile/layerReferencesAffected(byRemoving:)``.
+    private func references(to code: String) -> [String] {
+        var found: [String] = []
+        for layer in layers {
+            for (key, binding) in layer.bindings.enumerated() where binding.behavior == code {
+                found.append("layer \(layer.id) (\(layer.displayName)) key \(key)")
+            }
+        }
+        for combo in combos where combo.binding.behavior == code {
+            found.append("combo `\(combo.nodeName)`")
+        }
+        for macro in macros where macro.bindings.contains(where: { $0.behavior == code }) {
+            found.append("macro `&\(macro.label)`")
+        }
+        for behavior in behaviors
+        where behavior.bindings.contains(where: { $0.split(separator: " ").first.map(String.init) == code }) {
+            found.append("behavior `&\(behavior.label)`")
+        }
+        return found
+    }
+
+    // MARK: - Layers
+
+    /// Adds a layer of `&trans` at `index` and selects it.
+    ///
+    /// The key count comes from the layout, falling back to an existing layer,
+    /// exactly as `add_layer` does — a layer of the wrong length is a keymap
+    /// that does not build, so it is refused rather than guessed at.
+    func addLayer(nodeName: String, displayName: String?, at index: Int) {
+        let keyCount = layout.isEmpty ? layers.first?.bindings.count : layout.count
+        guard let keyCount else {
+            error = AppError(
+                title: "Could not add a layer",
+                message: "No keyboard layout is loaded and there is no existing layer to take a "
+                    + "key count from, so there is no way to know how many keys the new layer has."
+            )
+            return
+        }
+        let bindings = Array(repeating: KeyBinding(behavior: "&trans"), count: keyCount)
+        let applied = edit("Could not add a layer") {
+            try $0.addLayer(
+                nodeName: nodeName, displayName: displayName, bindings: bindings, at: index
+            )
+        }
+        guard applied else { return }
+        sidebarSelection = .layer(index)
+    }
+
+    func renameLayer(at index: Int, to name: String) {
+        edit("Could not rename that layer") { try $0.setLayerDisplayName(layer: index, to: name) }
+    }
+
+    func removeLayer(at index: Int) {
+        edit("Could not remove that layer") { try $0.removeLayer(at: index) }
+    }
+
+    /// A node name nothing in the keymap is using yet, for a new layer, behavior
+    /// or macro. `separator` is `-` for a combo and `_` for everything else.
+    func uniqueNodeName(startingFrom base: String, separator: Character = "_") -> String {
+        guard let keymap else { return base }
+        return keymap.uniqueNodeName(
+            startingFrom: base, separator: separator, taken: keymap.modelledNodeNames
+        )
     }
 
     // MARK: - Saving
@@ -620,17 +814,10 @@ extension AppModel {
             }
         }
         // Layer numbers move under the selection when a layer is added or
-        // removed, and the sidebar would otherwise go on pointing at a number
-        // that no longer names a layer. A combo selection is left alone; only
-        // the layer being drawn is stale.
-        if applied, let selected = selectedLayerID,
-           !layers.contains(where: { $0.id == selected })
-        {
-            if case .layer = sidebarSelection {
-                sidebarSelection = layers.first.map { .layer($0.id) }
-            }
-            selectedLayerID = layers.first?.id
-        }
+        // removed, and a removed behavior or macro leaves the sidebar pointing
+        // at an id nothing answers to. `edit` reconciles both, so there is
+        // nothing left to do here — and one fixup rather than two is why a
+        // sidebar deletion cannot behave differently from an applied proposal.
         return applied
     }
 

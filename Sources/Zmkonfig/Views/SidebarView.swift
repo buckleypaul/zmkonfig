@@ -5,6 +5,14 @@ struct SidebarView: View {
     @Environment(\.theme) private var theme
     @Bindable var model: AppModel
 
+    /// The add/rename sheet, or nil. One piece of state rather than two flags
+    /// and an index, so the sheet cannot be open about a layer that is gone.
+    @State private var layerSheet: LayerSheet.Intent?
+    /// The layer a delete has been asked for and not yet confirmed. Deleting a
+    /// layer renumbers the ones after it, so it is the one sidebar action that
+    /// changes what a binding elsewhere in the file means.
+    @State private var layerPendingDeletion: Int?
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             repoHeader
@@ -13,6 +21,40 @@ struct SidebarView: View {
             layerList
         }
         .background(theme.color(.sidebarBackground))
+        .sheet(item: $layerSheet) { intent in
+            LayerSheet(model: model, intent: intent)
+        }
+        .confirmationDialog(
+            layerPendingDeletion.map { "Delete layer \($0)?" } ?? "Delete layer?",
+            isPresented: Binding(
+                get: { layerPendingDeletion != nil },
+                set: { if !$0 { layerPendingDeletion = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let index = layerPendingDeletion { model.removeLayer(at: index) }
+                layerPendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) { layerPendingDeletion = nil }
+        } message: {
+            Text(deletionWarning)
+        }
+    }
+
+    /// What removing the pending layer costs, in the assistant's own words —
+    /// the bindings that keep the number they were written with and will point
+    /// somewhere else afterwards. Nothing rewrites them; see `LayerSheet`.
+    private var deletionWarning: String {
+        guard let index = layerPendingDeletion, let keymap = model.keymap,
+              model.layers.indices.contains(index)
+        else { return "" }
+        let layer = model.layers[index]
+        let head = "“\(layer.displayName)” and its \(layer.bindings.count) bindings are removed "
+            + "from the keymap."
+        guard let note = AssistantTools.renumbering(keymap.layerReferencesAffected(byRemoving: index))
+        else { return head }
+        return head + " " + note
     }
 
     // MARK: - Repo header
@@ -65,7 +107,9 @@ struct SidebarView: View {
                         .tag(SidebarSelection.layer(layer.id))
                 }
             } header: {
-                SectionLabel(text: "Layers")
+                sectionHeader("Layers", help: "Add a layer at the end") {
+                    layerSheet = .add(at: model.layers.count)
+                }
             }
 
             Section {
@@ -77,21 +121,73 @@ struct SidebarView: View {
                     Caption("No combos yet", tone: .tertiaryText)
                 }
             } header: {
+                sectionHeader("Combos", help: "Add a combo") { model.addCombo() }
+            }
+
+            Section {
+                ForEach(model.behaviors) { behavior in
+                    behaviorRow(behavior)
+                        .tag(SidebarSelection.behavior(behavior.id))
+                }
+                if model.behaviors.isEmpty {
+                    Caption("No custom behaviors yet", tone: .tertiaryText)
+                }
+            } header: {
+                // A menu rather than a plain `+`: a behavior's kind decides the
+                // shape of every field in the editor, so it is the one thing
+                // that cannot be filled in afterwards without redoing the rest.
                 HStack(spacing: theme.metric(.spacingS)) {
-                    SectionLabel(text: "Combos")
+                    SectionLabel(text: "Behaviors")
                     Spacer(minLength: 0)
-                    Button {
-                        model.addCombo()
+                    Menu {
+                        ForEach(Self.behaviorKinds, id: \.self) { kind in
+                            Button(kind.displayName) { model.addBehavior(kind: kind) }
+                        }
                     } label: {
                         Image(systemName: "plus")
                     }
-                    .buttonStyle(.plain)
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
                     .disabled(model.keymap == nil)
-                    .help("Add a combo")
+                    .help("Define a behavior")
                 }
+            }
+
+            Section {
+                ForEach(model.macros) { macro in
+                    macroRow(macro)
+                        .tag(SidebarSelection.macro(macro.id))
+                }
+                if model.macros.isEmpty {
+                    Caption("No macros yet", tone: .tertiaryText)
+                }
+            } header: {
+                sectionHeader("Macros", help: "Define a macro") { model.addMacro() }
             }
         }
         .listStyle(.sidebar)
+    }
+
+    /// A macro is a behavior node too, but `BehaviorReader` hands
+    /// `zmk,behavior-macro*` to `MacroReader` and never reads one back — so a
+    /// macro made here would disappear from this editor on the next parse. The
+    /// Macros section is where one is made.
+    private static let behaviorKinds = BehaviorKind.allCases.filter { $0 != .macroBehavior }
+
+    private func sectionHeader(
+        _ title: String, help: String, add: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: theme.metric(.spacingS)) {
+            SectionLabel(text: title)
+            Spacer(minLength: 0)
+            Button(action: add) {
+                Image(systemName: "plus")
+            }
+            .buttonStyle(.plain)
+            .disabled(model.keymap == nil)
+            .help(help)
+        }
     }
 
     /// Text on a selected row. A theme color cannot be right here: the fill
@@ -125,6 +221,64 @@ struct SidebarView: View {
             rowDetail("\(layer.bindings.count)", selected: selected)
         }
         .padding(.vertical, 2)
+        .contextMenu {
+            Button("Rename…") { layerSheet = .rename(at: layer.id) }
+            Button("Add Layer Above…") { layerSheet = .add(at: layer.id) }
+            Button("Add Layer Below…") { layerSheet = .add(at: layer.id + 1) }
+            Divider()
+            Button("Delete", role: .destructive) { layerPendingDeletion = layer.id }
+                // A keymap needs at least one layer, and `removeLayer` refuses
+                // the last one. Saying so with a disabled item beats an alert.
+                .disabled(model.layers.count < 2)
+        }
+    }
+
+    private func behaviorRow(_ behavior: KeymapBehavior) -> some View {
+        let selected = model.sidebarSelection == .behavior(behavior.id)
+        return HStack(spacing: theme.metric(.spacingS)) {
+            VStack(alignment: .leading, spacing: 0) {
+                rowTitle("&\(behavior.label)", font: .monoSmall, selected: selected)
+                    .lineLimit(1)
+                rowDetail(behavior.kind?.displayName ?? behavior.compatible, selected: selected)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            problemBadge(BehaviorWriter.problems(with: behavior))
+        }
+        .padding(.vertical, 2)
+        .contextMenu {
+            Button("Delete", role: .destructive) { model.removeBehavior(id: behavior.id) }
+        }
+    }
+
+    private func macroRow(_ macro: KeymapMacro) -> some View {
+        let selected = model.sidebarSelection == .macro(macro.id)
+        return HStack(spacing: theme.metric(.spacingS)) {
+            VStack(alignment: .leading, spacing: 0) {
+                rowTitle("&\(macro.label)", font: .monoSmall, selected: selected)
+                    .lineLimit(1)
+                rowDetail("\(macro.bindings.count) steps", selected: selected)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            problemBadge(MacroWriter.problems(with: macro))
+        }
+        .padding(.vertical, 2)
+        .contextMenu {
+            Button("Delete", role: .destructive) { model.removeMacro(id: macro.id) }
+        }
+    }
+
+    /// The same warning triangle a combo with problems gets, carrying the
+    /// writer's own sentences as its tooltip.
+    @ViewBuilder
+    private func problemBadge(_ problems: [String]) -> some View {
+        if !problems.isEmpty {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(theme.font(.caption))
+                .foregroundStyle(theme.color(.danger))
+                .help(problems.joined(separator: "\n"))
+        }
     }
 
     private func comboRow(_ combo: KeymapCombo) -> some View {

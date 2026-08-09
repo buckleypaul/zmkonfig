@@ -147,6 +147,47 @@ struct IntegerField: View {
     }
 }
 
+/// A monospaced field for a value the model normalizes: a binding, a cell of
+/// tokens.
+///
+/// A plain `Binding` cannot be used for these. `&kp  A` is stored as a parsed
+/// binding and reads back as `&kp A`, so the value the field is bound to changes
+/// under the cursor on the keystroke after the one that caused it — the second
+/// space vanishes as it is typed, and text that does not parse at all is
+/// rejected and snaps back mid-word. So while the field has focus it shows what
+/// the user typed and nothing else; it takes the model's own spelling when the
+/// field is left, and any change from elsewhere while it is not focused.
+struct NormalizingField: View {
+    @Environment(\.theme) private var theme
+    let placeholder: String
+    let value: String
+    let onChange: (String) -> Void
+
+    @State private var text = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        TextField(placeholder, text: $text)
+            .font(theme.font(.mono))
+            .textFieldStyle(.roundedBorder)
+            .focused($isFocused)
+            .onAppear { text = value }
+            .onChange(of: value) { _, latest in
+                guard !isFocused, latest != text else { return }
+                text = latest
+            }
+            .onChange(of: isFocused) { _, focused in
+                // Leaving shows what the model actually holds, which is how the
+                // user finds out that what they typed did not parse.
+                if !focused, text != value { text = value }
+            }
+            .onChange(of: text) { _, latest in
+                guard latest != value else { return }
+                onChange(latest)
+            }
+    }
+}
+
 /// A property that a keymap node can simply leave out. Unchecked means the
 /// property is not written at all and ZMK's own default applies, which is not
 /// the same as writing that default down.
