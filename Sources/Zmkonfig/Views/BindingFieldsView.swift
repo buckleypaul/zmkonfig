@@ -59,7 +59,7 @@ struct BindingFieldsView: View {
             ForEach(Array(kinds.enumerated()), id: \.offset) { slot, kind in
                 FieldRow(label: isHoldTap
                          ? (slot == 0 ? "Hold" : "Tap")
-                         : Self.slotTitle(kind: kind, slot: slot)) {
+                         : BindingAlgebra.slotTitle(kind: kind, slot: slot)) {
                     slotEditor(kind: kind, slot: slot)
                 }
             }
@@ -93,10 +93,10 @@ struct BindingFieldsView: View {
 
     @ViewBuilder
     private func keycodeSlot(slot: Int) -> some View {
-        let decomposed = Self.decompose(param(at: slot) ?? BindingParam(value: ""))
+        let decomposed = BindingAlgebra.decompose(param(at: slot) ?? BindingParam(value: ""))
         VStack(alignment: .leading, spacing: theme.metric(.spacingS)) {
             HStack(spacing: theme.metric(.spacingXS)) {
-                ForEach(Self.modifierFamilies, id: \.left) { family in
+                ForEach(ModifierFunction.families) { family in
                     let isOn = decomposed.mods.contains(family.left) || decomposed.mods.contains(family.right)
                     Button(family.symbol) {
                         toggleModifier(family, slot: slot)
@@ -195,46 +195,8 @@ struct BindingFieldsView: View {
         var id: Int { value }
     }
 
-    static let modifierFamilies: [(left: String, right: String, symbol: String, name: String)] = [
-        ("LC", "RC", "⌃", "Control"),
-        ("LA", "RA", "⌥", "Option"),
-        ("LS", "RS", "⇧", "Shift"),
-        ("LG", "RG", "⌘", "Command"),
-    ]
-
-    /// `LG(LS(A))` → mods `["LG", "LS"]`, base `A`.
-    static func decompose(_ param: BindingParam) -> (mods: [String], base: BindingParam) {
-        var mods: [String] = []
-        var current = param
-        while current.params.count == 1, BindingLabel.modifierSymbols[current.value] != nil {
-            mods.append(current.value)
-            current = current.params[0]
-        }
-        return (mods, current)
-    }
-
-    static func compose(mods: [String], base: BindingParam) -> BindingParam {
-        mods.reversed().reduce(base) { inner, mod in BindingParam(value: mod, params: [inner]) }
-    }
-
     private var slotKinds: [ParamKind] {
-        let declared = model.behavior(for: binding.behavior)?.params ?? []
-        guard declared.isEmpty else { return declared }
-        // `AppModel.rebuildBehaviorIndex` synthesizes an entry for every
-        // behavior a binding names, so the only gap left is a binding carrying
-        // more parameters than its behavior admits to — a custom behavior whose
-        // `#binding-cells` the parser could not read. Give it a slot each
-        // rather than nothing to edit.
-        return binding.params.map { _ in .code }
-    }
-
-    static func slotTitle(kind: ParamKind, slot: Int) -> String {
-        switch kind {
-        case .layer: "Layer"
-        case .command: "Command"
-        case .mod: "Modifier"
-        case .code: slot == 0 ? "Keycode" : "Keycode \(slot + 1)"
-        }
+        BindingAlgebra.slotKinds(for: binding, declaring: model.behavior(for: binding.behavior))
     }
 
     private func param(at slot: Int) -> BindingParam? {
@@ -242,7 +204,7 @@ struct BindingFieldsView: View {
     }
 
     private func currentBase(atSlot slot: Int) -> BindingParam? {
-        param(at: slot).map { Self.decompose($0).base }
+        param(at: slot).map { BindingAlgebra.decompose($0).base }
     }
 
     private func setParam(at slot: Int, to newValue: BindingParam) {
@@ -255,22 +217,16 @@ struct BindingFieldsView: View {
     }
 
     private func setBase(atSlot slot: Int, to value: String) {
-        let mods = Self.decompose(param(at: slot) ?? BindingParam(value: "")).mods
-        setParam(at: slot, to: Self.compose(mods: mods, base: BindingParam(value: value)))
+        let mods = BindingAlgebra.decompose(param(at: slot) ?? BindingParam(value: "")).mods
+        setParam(at: slot, to: BindingAlgebra.compose(mods: mods, base: BindingParam(value: value)))
     }
 
-    private func toggleModifier(
-        _ family: (left: String, right: String, symbol: String, name: String),
-        slot: Int
-    ) {
-        let decomposed = Self.decompose(param(at: slot) ?? BindingParam(value: ""))
-        var mods = decomposed.mods
-        if mods.contains(family.left) || mods.contains(family.right) {
-            mods.removeAll { $0 == family.left || $0 == family.right }
-        } else {
-            mods.append(family.left)
-        }
-        setParam(at: slot, to: Self.compose(mods: mods, base: decomposed.base))
+    private func toggleModifier(_ family: ModifierFunction.Family, slot: Int) {
+        let decomposed = BindingAlgebra.decompose(param(at: slot) ?? BindingParam(value: ""))
+        setParam(at: slot, to: BindingAlgebra.compose(
+            mods: BindingAlgebra.toggling(family, in: decomposed.mods),
+            base: decomposed.base
+        ))
     }
 
     /// Adds or drops the trailing argument when the chosen command needs one.
@@ -292,32 +248,9 @@ struct BindingFieldsView: View {
             get: { binding.behavior },
             set: { code in
                 guard code != binding.behavior, let behavior = model.behavior(for: code) else { return }
-                apply(Self.rebuild(binding, as: behavior, layers: model.layers))
+                apply(BindingAlgebra.rebuild(binding, as: behavior, layers: model.layers))
             }
         )
     }
 
-    /// Keeps whatever parameters still make sense when the behavior changes and
-    /// fills the rest with something valid.
-    static func rebuild(_ binding: KeyBinding, as behavior: ZMKBehavior, layers: [KeymapLayer]) -> KeyBinding {
-        let kinds = behavior.params ?? []
-        var params: [BindingParam] = []
-        for (index, kind) in kinds.enumerated() {
-            if binding.params.indices.contains(index) {
-                params.append(binding.params[index])
-            } else {
-                params.append(BindingParam(value: defaultValue(for: kind, behavior: behavior, layers: layers)))
-            }
-        }
-        return KeyBinding(behavior: behavior.code, params: params)
-    }
-
-    static func defaultValue(for kind: ParamKind, behavior: ZMKBehavior, layers: [KeymapLayer]) -> String {
-        switch kind {
-        case .layer: String(layers.first?.id ?? 0)
-        case .command: behavior.commands?.first?.code ?? ""
-        case .mod: "LEFT_SHIFT"
-        case .code: "A"
-        }
-    }
 }

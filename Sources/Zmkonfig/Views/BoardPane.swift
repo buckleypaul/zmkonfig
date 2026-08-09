@@ -77,7 +77,7 @@ struct BoardPane: View {
                 layout: model.layout,
                 bindings: layer.bindings,
                 layers: model.layers,
-                behaviorsByCode: model.behaviorsByCode,
+                behaviors: model.behaviorIndex,
                 selectedIndex: model.selectedKeyIndex,
                 highlightedIndices: model.highlightedPositions,
                 onSelect: { model.selectKey($0) }

@@ -9,7 +9,7 @@ struct KeyboardView: View {
     let layout: [KeyPosition]
     let bindings: [KeyBinding]
     let layers: [KeymapLayer]
-    let behaviorsByCode: [String: ZMKBehavior]
+    let behaviors: BehaviorIndex
     let selectedIndex: Int?
     let highlightedIndices: Set<Int>
     let onSelect: (Int) -> Void
@@ -52,7 +52,7 @@ struct KeyboardView: View {
         let binding = bindings.indices.contains(index) ? bindings[index] : nil
         KeycapView(
             label: binding.map {
-                BindingLabel.make($0, behavior: behaviorsByCode[$0.behavior], layers: layers)
+                BindingLabel.make($0, behavior: behaviors.behavior(for: $0.behavior), layers: layers)
             },
             source: binding?.text,
             isSelected: selectedIndex == index,

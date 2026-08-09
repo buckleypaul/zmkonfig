@@ -72,7 +72,11 @@ split board.
 Sources/ZmkonfigKit/     library — all logic, no UI, unit tested
   DeviceTree/            lexer, parser, KeymapFile, SourceEdit splicing,
                          binding table renderer, combo reader + writer
-  Model/                 KeyBinding, KeyboardLayout, ZMKMetadata
+  Model/                 KeyBinding, KeyboardLayout, ZMKMetadata,
+                         BindingLabel + ModifierFunction + BindingAlgebra
+                         (what a binding means and how it is edited),
+                         BehaviorIndex, KeymapContext — the read-only snapshot
+                         AssistantTools, ProposedEdit and KeymapDigest run on
   Services/              Shell, Git, RepoManager, LayoutCatalog, GitHubClient,
                          Flasher, Keychain, AnthropicClient
   Theme/                 Theme + ThemeEngine

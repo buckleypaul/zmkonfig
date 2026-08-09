@@ -1,20 +1,25 @@
 import Foundation
-import ZmkonfigKit
 
 /// Turns a `KeyBinding` into the one or two short strings a keycap can show.
 ///
 /// The tap value is the big label; the hold value (a mod, a layer, the behavior
 /// itself) is the small one above it — the same convention the web editor uses.
-enum BindingLabel {
-    struct Label: Equatable {
-        var tap: String
-        var hold: String?
-        var kind: Kind
+public enum BindingLabel {
+    public struct Label: Equatable, Sendable {
+        public var tap: String
+        public var hold: String?
+        public var kind: Kind
 
-        enum Kind: Equatable { case normal, transparent, unbound }
+        public enum Kind: Equatable, Sendable { case normal, transparent, unbound }
+
+        public init(tap: String, hold: String?, kind: Kind) {
+            self.tap = tap
+            self.hold = hold
+            self.kind = kind
+        }
     }
 
-    static func make(_ binding: KeyBinding, behavior: ZMKBehavior?, layers: [KeymapLayer]) -> Label {
+    public static func make(_ binding: KeyBinding, behavior: ZMKBehavior?, layers: [KeymapLayer]) -> Label {
         switch binding.behavior {
         case "&trans": return Label(tap: "▽", hold: nil, kind: .transparent)
         case "&none": return Label(tap: "✕", hold: nil, kind: .unbound)
@@ -83,7 +88,7 @@ enum BindingLabel {
         return String(token.dropFirst(prefix.count))
     }
 
-    static func layerLabel(_ param: BindingParam, layers: [KeymapLayer]) -> String {
+    public static func layerLabel(_ param: BindingParam, layers: [KeymapLayer]) -> String {
         if let index = Int(param.value), let layer = layers.first(where: { $0.id == index }) {
             return layer.displayName
         }
@@ -93,7 +98,7 @@ enum BindingLabel {
         return token.replacingOccurrences(of: "_", with: " ").capitalized
     }
 
-    static func commandLabel(_ param: BindingParam) -> String {
+    public static func commandLabel(_ param: BindingParam) -> String {
         let token = stripping(["BT_", "OUT_", "RGB_", "EP_", "EXT_POWER_"], from: param.value)
         let inner = param.params.map { commandLabel($0) }.joined(separator: " ")
         let head = token.replacingOccurrences(of: "_", with: " ")
@@ -101,9 +106,9 @@ enum BindingLabel {
     }
 
     /// `LG(LS(SPACE))` → `⌘⇧␣`, `N1` → `1`, `LEFT_ARROW` → `←`.
-    static func keycodeLabel(_ param: BindingParam) -> String {
-        if param.params.count == 1, let symbol = modifierSymbols[param.value] {
-            return symbol + keycodeLabel(param.params[0])
+    public static func keycodeLabel(_ param: BindingParam) -> String {
+        if param.params.count == 1, ModifierFunction.isModifier(param.value) {
+            return ModifierFunction.glyph(for: param.value) + keycodeLabel(param.params[0])
         }
         if !param.params.isEmpty {
             let inner = param.params.map { keycodeLabel($0) }.joined(separator: ",")
@@ -112,7 +117,7 @@ enum BindingLabel {
         return prettyKeycode(param.value)
     }
 
-    static func prettyKeycode(_ raw: String) -> String {
+    public static func prettyKeycode(_ raw: String) -> String {
         if let known = keycodeSymbols[raw] { return known }
         if raw.count == 1 { return raw }
         // N1…N0 and NUMBER_1… are just digits.
@@ -130,15 +135,7 @@ enum BindingLabel {
         (code.hasPrefix("&") ? String(code.dropFirst()) : code).uppercased()
     }
 
-    /// Modifier functions that wrap another keycode, and the glyph to show.
-    static let modifierSymbols: [String: String] = [
-        "LG": "⌘", "LGUI": "⌘", "RG": "⌘", "RGUI": "⌘",
-        "LS": "⇧", "LSHFT": "⇧", "RS": "⇧", "RSHFT": "⇧",
-        "LA": "⌥", "LALT": "⌥", "RA": "⌥", "RALT": "⌥",
-        "LC": "⌃", "LCTL": "⌃", "RC": "⌃", "RCTL": "⌃",
-    ]
-
-    static let keycodeSymbols: [String: String] = [
+    public static let keycodeSymbols: [String: String] = [
         // Modifiers as standalone keys
         "LEFT_GUI": "⌘", "LGUI": "⌘", "LCMD": "⌘", "LWIN": "⌘",
         "RIGHT_GUI": "⌘", "RGUI": "⌘", "RCMD": "⌘", "RWIN": "⌘",

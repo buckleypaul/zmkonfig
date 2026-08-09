@@ -36,21 +36,10 @@ final class AppModel {
     private(set) var behaviors: [ZMKBehavior] = []
     private(set) var keycodes: [ZMKKeycode] = []
     /// The behavior index: the stock ZMK behaviors plus the ones this keymap
-    /// defines for itself, rebuilt when either changes.
-    ///
-    /// The dictionary is the one thing assigned; the sorted list follows from
-    /// it. They used to be two properties written in lockstep, with nothing
-    /// stopping a third writer setting one and forgetting the other. Both are
-    /// stored because both are read on every render — the picker's `ForEach`
-    /// wants the list and every drawn key looks a code up — and neither wants
-    /// re-deriving per read.
-    private(set) var behaviorsByCode: [String: ZMKBehavior] = [:] {
-        didSet {
-            availableBehaviors = behaviorsByCode.values
-                .sorted { $0.code.localizedCaseInsensitiveCompare($1.code) == .orderedAscending }
-        }
-    }
-    private(set) var availableBehaviors: [ZMKBehavior] = []
+    /// defines for itself, rebuilt when either changes. ``BehaviorIndex`` owns
+    /// how it is derived; this is only where the current one is kept.
+    private(set) var behaviorIndex: BehaviorIndex = .empty
+    var availableBehaviors: [ZMKBehavior] { behaviorIndex.all }
     private(set) var catalog: [CatalogEntry] = []
     private(set) var isLoadingCatalog = false
 
@@ -140,65 +129,38 @@ final class AppModel {
     }
 
     func behavior(for code: String) -> ZMKBehavior? {
-        behaviorsByCode[code]
+        behaviorIndex.behavior(for: code)
     }
 
     /// False for behaviors the keymap defines itself, whose parameter kinds we
     /// can only guess at.
     func isDocumentedBehavior(_ code: String) -> Bool {
-        behaviors.contains { $0.code == code }
+        behaviorIndex.isDocumented(code)
     }
-
-    // MARK: - The behavior index
 
     /// The 15 stock behaviors are only half the story: this keymap defines
     /// eight hold-taps of its own (`&hml`, `&hmr`, `&qt`, …) that metadata
-    /// knows nothing about. Read them out of the parsed devicetree so they can
-    /// be picked even on keys that do not already use them.
+    /// knows nothing about. ``BehaviorIndex`` reads them out of the parsed
+    /// keymap so they can be picked even on keys that do not already use them.
     private func rebuildBehaviorIndex() {
-        var known = Dictionary(behaviors.map { ($0.code, $0) }, uniquingKeysWith: { first, _ in first })
-
-        for node in keymap?.document.allNodes() ?? [] {
-            guard let label = node.label,
-                  let compatible = node.compatible,
-                  compatible.hasPrefix("zmk,behavior-")
-            else { continue }
-            let code = "&" + label
-            guard known[code] == nil else { continue }
-            known[code] = ZMKBehavior(
-                code: code,
-                name: node.name.replacingOccurrences(of: "_", with: " "),
-                params: parameterKinds(of: node, stock: known)
-            )
-        }
-
-        // A binding may still reference something we could not find a
-        // definition for; infer its shape from how it is used.
-        for binding in layers.flatMap(\.bindings) + combos.map(\.binding)
-        where known[binding.behavior] == nil {
-            known[binding.behavior] = ZMKBehavior(
-                code: binding.behavior,
-                name: String(binding.behavior.drop(while: { $0 == "&" })),
-                params: binding.params.map { _ in .code }
-            )
-        }
-
-        behaviorsByCode = known
+        behaviorIndex = BehaviorIndex(stock: behaviors, keymap: keymap)
     }
 
-    /// A hold-tap declares its arity as `#binding-cells` and what each slot
-    /// means through the behaviors it wraps: `bindings = <&mo>, <&tog>` is two
-    /// layer slots, `<&kp>, <&kp>` is two keycodes.
-    private func parameterKinds(of node: DTNode, stock: [String: ZMKBehavior]) -> [ParamKind] {
-        var kinds = (node.property("bindings")?.value.cellTexts ?? []).map { cell -> ParamKind in
-            let code = cell.split(separator: " ").first.map(String.init) ?? cell
-            return stock[code]?.params?.first ?? .code
-        }
-        if let text = node.property("#binding-cells")?.value.cellTexts?.first, let cells = Int(text) {
-            kinds = Array(kinds.prefix(cells))
-            kinds.append(contentsOf: Array(repeating: ParamKind.code, count: max(0, cells - kinds.count)))
-        }
-        return kinds
+    /// What the keymap looks like to a feature that only reads it — the
+    /// assistant's tools, and the digests they answer with.
+    ///
+    /// Built per call rather than stored: it is a handful of already-shared
+    /// values, and a stored copy is one more thing that can be a turn out of
+    /// date while the model reasons about it.
+    var context: KeymapContext {
+        KeymapContext(
+            keymap: keymap,
+            keycodes: keycodes,
+            layout: layout,
+            behaviors: behaviorIndex,
+            hasUnsavedEdits: hasUnsavedEdits,
+            keymapRelativePath: keymapRelativePath
+        )
     }
 
     /// The keymap path relative to the repo root, which is what `git diff`

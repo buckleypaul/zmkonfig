@@ -214,7 +214,7 @@ final class AssistantModel {
                 let label = AssistantTools.label(for: use)
                 activity = label
                 update { $0.activity.append(label) }
-                let outcome = AssistantTools.run(use, app: app, staged: staged)
+                let outcome = AssistantTools.run(use, context: app.context, staged: staged)
                 if let id = outcome.unstage { staged.removeAll { $0.id == id } }
                 if let edit = outcome.staged { stage(edit, into: &staged) }
                 // Every `tool_use` gets a `tool_result`, including the ones

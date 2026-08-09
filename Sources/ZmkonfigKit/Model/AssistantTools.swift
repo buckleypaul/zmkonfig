@@ -1,5 +1,4 @@
 import Foundation
-import ZmkonfigKit
 
 /// One change the assistant proposes.
 ///
@@ -8,7 +7,7 @@ import ZmkonfigKit
 /// safety argument for the feature: the model writes no devicetree and picks no
 /// byte ranges — it names a layer and a key position, and the same
 /// `SourceEdit` splice that serves every button in the UI does the rest.
-enum ProposedEdit: Identifiable, Equatable {
+public enum ProposedEdit: Identifiable, Equatable, Sendable {
     case setBinding(layer: Int, index: Int, binding: KeyBinding)
     /// A whole combo, either an edited copy of one the file has (matched by id)
     /// or a brand new one.
@@ -41,7 +40,7 @@ enum ProposedEdit: Identifiable, Equatable {
     /// `addLayer` is the exception that has no target yet, so it keys on the
     /// node name it would create. `removeLayer` shares `renameLayer`'s
     /// namespace: removing a layer you just renamed cancels the rename.
-    var id: String {
+    public var id: String {
         switch self {
         case .setBinding(let layer, let index, _): "binding:\(layer):\(index)"
         case .setCombo(let combo): "combo:\(combo.id)"
@@ -64,10 +63,10 @@ enum ProposedEdit: Identifiable, Equatable {
 /// reloaded the repo, or deleted a combo, between the model staging a change
 /// and clicking Apply. That is a real failure and gets a real message rather
 /// than a silently skipped edit.
-enum ProposalError: Error, CustomStringConvertible {
+public enum ProposalError: Error, CustomStringConvertible {
     case comboGone
 
-    var description: String {
+    public var description: String {
         switch self {
         case .comboGone:
             "a combo the change would have removed is no longer in this keymap; "
@@ -79,24 +78,24 @@ enum ProposalError: Error, CustomStringConvertible {
 
 /// The tools Claude may call, and what happens when it calls one.
 ///
-/// The read tools run immediately and answer from the live `AppModel`. The edit
-/// tools **mutate nothing**: they validate their arguments against the keymap
-/// as it stands, stage a ``ProposedEdit``, and tell the model plainly that it
-/// has been staged rather than applied. Nothing here holds a `KeymapFile`, so
-/// there is no path from a tool call to the file on disk.
-@MainActor
-enum AssistantTools {
+/// The read tools run immediately and answer from a ``KeymapContext`` — a
+/// snapshot of the editor taken per call. The edit tools **mutate nothing**:
+/// they validate their arguments against the keymap as it stands, stage a
+/// ``ProposedEdit``, and tell the model plainly that it has been staged rather
+/// than applied. Nothing here can write a `KeymapFile`, so there is no path
+/// from a tool call to the file on disk.
+public enum AssistantTools {
 
     /// What one tool call produced: the answer to send back, and any change to
     /// the staged set.
-    struct Outcome {
-        let result: ClaudeToolResult
+    public struct Outcome {
+        public let result: ClaudeToolResult
         /// An edit to stage, replacing any staged edit with the same id.
-        var staged: ProposedEdit?
+        public var staged: ProposedEdit?
         /// A staged edit to drop — how `remove_combo` cancels the creation of a
         /// combo staged earlier in the same turn, which was never in the file
         /// and so cannot be removed from it.
-        var unstage: ProposedEdit.ID?
+        public var unstage: ProposedEdit.ID?
     }
 
     enum Name {
@@ -135,7 +134,7 @@ enum AssistantTools {
 
     // MARK: - Declarations
 
-    static let all: [ClaudeTool] = [
+    public static let all: [ClaudeTool] = [
         ClaudeTool(
             name: Name.listLayers,
             description: """
@@ -448,7 +447,7 @@ enum AssistantTools {
     ]
 
     /// How a call reads in the "what it did" disclosure: `read_layer(layer: 1)`.
-    static func label(for use: ClaudeToolUse) -> String {
+    public static func label(for use: ClaudeToolUse) -> String {
         let arguments = (use.input.objectValue ?? [:])
             .sorted { $0.key < $1.key }
             .map { "\($0.key): \($0.value.jsonText)" }
@@ -458,44 +457,46 @@ enum AssistantTools {
 
     // MARK: - Execution
 
-    static func run(_ use: ClaudeToolUse, app: AppModel, staged: [ProposedEdit]) -> Outcome {
+    public static func run(
+        _ use: ClaudeToolUse, context: KeymapContext, staged: [ProposedEdit]
+    ) -> Outcome {
         switch use.name {
         case Name.listLayers:
-            return answer(use, KeymapDigest.layers(app.layers))
+            return answer(use, KeymapDigest.layers(context.layers))
         case Name.readLayer:
-            return readLayer(use, app: app)
+            return readLayer(use, context: context)
         case Name.listCombos:
-            return answer(use, KeymapDigest.combos(app.combos, keymap: app.keymap))
+            return answer(use, KeymapDigest.combos(context.combos, keymap: context.keymap))
         case Name.findKeycodes:
-            return findKeycodes(use, app: app)
+            return findKeycodes(use, context: context)
         case Name.listBehaviors:
-            return answer(use, behaviorList(app))
+            return answer(use, behaviorList(context))
         case Name.listBehaviorsDefined:
-            return answer(use, definedBehaviorList(app))
+            return answer(use, definedBehaviorList(context))
         case Name.listMacros:
-            return answer(use, macroList(app))
+            return answer(use, macroList(context))
         case Name.readKeymapSource:
-            return readKeymapSource(use, app: app)
+            return readKeymapSource(use, context: context)
         case Name.setBinding:
-            return setBinding(use, app: app)
+            return setBinding(use, context: context)
         case Name.setCombo:
-            return setCombo(use, app: app, staged: staged)
+            return setCombo(use, context: context, staged: staged)
         case Name.removeCombo:
-            return removeCombo(use, app: app, staged: staged)
+            return removeCombo(use, context: context, staged: staged)
         case Name.renameLayer:
-            return renameLayer(use, app: app)
+            return renameLayer(use, context: context)
         case Name.setBehavior:
-            return setBehavior(use, app: app, staged: staged)
+            return setBehavior(use, context: context, staged: staged)
         case Name.removeBehavior:
-            return removeBehavior(use, app: app, staged: staged)
+            return removeBehavior(use, context: context, staged: staged)
         case Name.setMacro:
-            return setMacro(use, app: app, staged: staged)
+            return setMacro(use, context: context, staged: staged)
         case Name.removeMacro:
-            return removeMacro(use, app: app, staged: staged)
+            return removeMacro(use, context: context, staged: staged)
         case Name.addLayer:
-            return addLayer(use, app: app)
+            return addLayer(use, context: context)
         case Name.removeLayer:
-            return removeLayer(use, app: app)
+            return removeLayer(use, context: context)
         default:
             // Only ``all`` is ever sent, so this is the API echoing back a name
             // nothing here declares. Saying so is more use than a generic error.
@@ -505,21 +506,21 @@ enum AssistantTools {
 
     // MARK: - Read tools
 
-    private static func readLayer(_ use: ClaudeToolUse, app: AppModel) -> Outcome {
+    private static func readLayer(_ use: ClaudeToolUse, context: KeymapContext) -> Outcome {
         guard let index = field(use, "layer")?.intValue else {
             return badArgument(use, "layer", "an integer")
         }
-        guard let layer = layer(index, in: app) else {
-            return failure(use, noSuchLayer(index, in: app))
+        guard let layer = layer(index, in: context) else {
+            return failure(use, noSuchLayer(index, in: context))
         }
         return answer(use, """
             Layer \(layer.id), "\(layer.displayName)".
 
-            \(KeymapDigest.layer(layer, layout: app.layout))
+            \(KeymapDigest.layer(layer, layout: context.layout))
             """)
     }
 
-    private static func findKeycodes(_ use: ClaudeToolUse, app: AppModel) -> Outcome {
+    private static func findKeycodes(_ use: ClaudeToolUse, context: KeymapContext) -> Outcome {
         guard let query = field(use, "query")?.stringValue,
               !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else {
@@ -530,7 +531,7 @@ enum AssistantTools {
         // recommends is one the user finds by typing the same string.
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let folded = needle.lowercased()
-        let matches = app.keycodes.filter { $0.matches(folded) }
+        let matches = context.keycodes.filter { $0.matches(folded) }
         guard !matches.isEmpty else {
             return answer(use, "No keycode matches \"\(needle)\".")
         }
@@ -549,23 +550,23 @@ enum AssistantTools {
         return answer(use, ([header] + lines).joined(separator: "\n"))
     }
 
-    private static func behaviorList(_ app: AppModel) -> String {
-        guard !app.availableBehaviors.isEmpty else {
+    private static func behaviorList(_ context: KeymapContext) -> String {
+        guard !context.availableBehaviors.isEmpty else {
             return "The behavior list has not loaded; no keymap is open yet."
         }
-        return app.availableBehaviors.map { behavior -> String in
+        return context.availableBehaviors.map { behavior -> String in
             let params = behavior.params ?? []
             let shape = params.isEmpty
                 ? "no parameters"
                 : params.map(\.rawValue).joined(separator: ", ")
-            let origin = app.isDocumentedBehavior(behavior.code) ? "" : " (defined by this keymap)"
+            let origin = context.isDocumentedBehavior(behavior.code) ? "" : " (defined by this keymap)"
             return "\(behavior.code) — \(behavior.name)\(origin): \(shape)"
         }
         .joined(separator: "\n")
     }
 
-    private static func definedBehaviorList(_ app: AppModel) -> String {
-        guard let keymap = app.keymap else { return noKeymap }
+    private static func definedBehaviorList(_ context: KeymapContext) -> String {
+        guard let keymap = context.keymap else { return noKeymap }
         guard !keymap.behaviors.isEmpty else {
             return """
                 This keymap defines no behaviors of its own. Everything it binds \
@@ -579,8 +580,8 @@ enum AssistantTools {
         .joined(separator: "\n")
     }
 
-    private static func macroList(_ app: AppModel) -> String {
-        guard let keymap = app.keymap else { return noKeymap }
+    private static func macroList(_ context: KeymapContext) -> String {
+        guard let keymap = context.keymap else { return noKeymap }
         guard !keymap.macros.isEmpty else {
             return "This keymap defines no macros. Use set_macro to define one."
         }
@@ -600,8 +601,8 @@ enum AssistantTools {
     /// bytes the moment anything was unsaved — which is the mistake this tool
     /// exists to prevent, so the answer says when there are unsaved edits rather
     /// than leaving it to be discovered.
-    private static func readKeymapSource(_ use: ClaudeToolUse, app: AppModel) -> Outcome {
-        guard let keymap = app.keymap else { return failure(use, noKeymap) }
+    private static func readKeymapSource(_ use: ClaudeToolUse, context: KeymapContext) -> Outcome {
+        guard let keymap = context.keymap else { return failure(use, noKeymap) }
 
         let source = String(decoding: keymap.document.source, as: UTF8.self)
         let lines = source.components(separatedBy: "\n")
@@ -616,7 +617,7 @@ enum AssistantTools {
             }
             guard from <= lines.count else {
                 return failure(use, """
-                    `from_line` is \(from) but \(name(of: app)) has only \
+                    `from_line` is \(from) but \(name(of: context)) has only \
                     \(lines.count) lines
                     """)
             }
@@ -638,7 +639,7 @@ enum AssistantTools {
             index += 1
         }
 
-        var header = "\(name(of: app)), \(lines.count) line(s)"
+        var header = "\(name(of: context)), \(lines.count) line(s)"
         if start > 0 || index < lines.count {
             header += ", showing lines \(start + 1) to \(index)"
         }
@@ -649,7 +650,7 @@ enum AssistantTools {
                 from_line: \(index + 1) for the next part.
                 """
         }
-        if app.hasUnsavedEdits {
+        if context.hasUnsavedEdits {
             header += """
                  Note: there are edits in the editor that are not yet saved, so \
                 this text is the file as it was last parsed. The layer, combo, \
@@ -660,16 +661,16 @@ enum AssistantTools {
         return answer(use, "\(header)\n\n\(shown.joined(separator: "\n"))")
     }
 
-    private static func name(of app: AppModel) -> String {
-        app.keymapRelativePath.map { "`\($0)`" } ?? "the keymap"
+    private static func name(of context: KeymapContext) -> String {
+        context.keymapRelativePath.map { "`\($0)`" } ?? "the keymap"
     }
 
     // MARK: - Describing behaviors and macros
 
     /// One behavior in a phrase: "hold-tap — holds `&kp`, taps `&kp`,
-    /// tapping-term-ms 280". Shared with ``AppModel/describe(_:)`` so the tool
+    /// tapping-term-ms 280". Shared with the app's proposal cards so the tool
     /// result the model reads and the card the user reads say the same thing.
-    static func summary(of behavior: KeymapBehavior) -> String {
+    public static func summary(of behavior: KeymapBehavior) -> String {
         let kind = BehaviorKind.kind(forCompatible: behavior.compatible)
         var parts: [String] = []
         if kind == .holdTap, behavior.bindings.count == 2 {
@@ -687,7 +688,7 @@ enum AssistantTools {
     /// One macro in a phrase. `sequenceLimit` caps how many steps are spelled
     /// out; nil spells out all of them, which is what `list_macros` wants and
     /// what a card in a chat bubble does not.
-    static func summary(of macro: KeymapMacro, sequenceLimit: Int?) -> String {
+    public static func summary(of macro: KeymapMacro, sequenceLimit: Int?) -> String {
         var parts: [String] = []
         let steps = macro.bindings.map(\.text)
         if let limit = sequenceLimit, steps.count > limit {
@@ -704,7 +705,7 @@ enum AssistantTools {
 
     /// A property value as a human reads it, not as devicetree writes it —
     /// `BehaviorWriter.line` is for the file, this is for a sentence.
-    static func text(_ value: BehaviorValue) -> String {
+    public static func text(_ value: BehaviorValue) -> String {
         switch value {
         case .integer(let number): "\(number)"
         case .string(let string): "\"\(string)\""
@@ -720,12 +721,12 @@ enum AssistantTools {
 
     // MARK: - Edit tools
 
-    private static func setBinding(_ use: ClaudeToolUse, app: AppModel) -> Outcome {
+    private static func setBinding(_ use: ClaudeToolUse, context: KeymapContext) -> Outcome {
         guard let layerIndex = field(use, "layer")?.intValue else {
             return badArgument(use, "layer", "an integer")
         }
-        guard let layer = layer(layerIndex, in: app) else {
-            return failure(use, noSuchLayer(layerIndex, in: app))
+        guard let layer = layer(layerIndex, in: context) else {
+            return failure(use, noSuchLayer(layerIndex, in: context))
         }
         guard let position = field(use, "key_position")?.intValue else {
             return badArgument(use, "key_position", "an integer")
@@ -756,9 +757,9 @@ enum AssistantTools {
     }
 
     private static func setCombo(
-        _ use: ClaudeToolUse, app: AppModel, staged: [ProposedEdit]
+        _ use: ClaudeToolUse, context: KeymapContext, staged: [ProposedEdit]
     ) -> Outcome {
-        guard let keymap = app.keymap else { return failure(use, noKeymap) }
+        guard let keymap = context.keymap else { return failure(use, noKeymap) }
         guard let name = field(use, "name")?.stringValue,
               !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else {
@@ -771,7 +772,7 @@ enum AssistantTools {
         // macros keeps them when something else about it is edited.
         var combo: KeymapCombo
         let isNew: Bool
-        if let existing = stagedCombo(named: name, in: staged) ?? app.combos.first(where: { $0.nodeName == name }) {
+        if let existing = stagedCombo(named: name, in: staged) ?? context.combos.first(where: { $0.nodeName == name }) {
             combo = existing
             isNew = false
         } else {
@@ -779,7 +780,7 @@ enum AssistantTools {
                 return failure(use, """
                     there is no combo named `\(name)`, so this call would create \
                     one — which needs both `key_positions` and `binding`. The \
-                    combos this keymap has are: \(comboNames(app))
+                    combos this keymap has are: \(comboNames(context))
                     """)
             }
             combo = KeymapCombo(
@@ -811,7 +812,7 @@ enum AssistantTools {
             guard numbers.count >= 2 else {
                 return failure(use, "a combo needs at least two key positions; \(numbers.count) were given")
             }
-            let keyCount = app.layout.count
+            let keyCount = context.layout.count
             if keyCount > 0, let outside = numbers.first(where: { $0 < 0 || $0 >= keyCount }) {
                 return failure(use, """
                     key position \(outside) is not on this keyboard; it has \
@@ -829,8 +830,8 @@ enum AssistantTools {
             guard numbers.count == layers.count else {
                 return failure(use, "every entry in `layers` must be an integer")
             }
-            if let outside = numbers.first(where: { layer($0, in: app) == nil }) {
-                return failure(use, noSuchLayer(outside, in: app))
+            if let outside = numbers.first(where: { layer($0, in: context) == nil }) {
+                return failure(use, noSuchLayer(outside, in: context))
             }
             combo.layers = numbers
         }
@@ -864,7 +865,7 @@ enum AssistantTools {
     }
 
     private static func removeCombo(
-        _ use: ClaudeToolUse, app: AppModel, staged: [ProposedEdit]
+        _ use: ClaudeToolUse, context: KeymapContext, staged: [ProposedEdit]
     ) -> Outcome {
         guard let name = field(use, "name")?.stringValue else {
             return badArgument(use, "name", "a string")
@@ -873,21 +874,21 @@ enum AssistantTools {
             use,
             named: "`\(name)`",
             pending: stagedCombo(named: name, in: staged),
-            in: app.combos,
+            in: context.combos,
             matching: { $0.nodeName == name },
             unstage: { ProposedEdit.setCombo($0).id },
-            notFound: "there is no combo named `\(name)`. This keymap has: \(comboNames(app))",
+            notFound: "there is no combo named `\(name)`. This keymap has: \(comboNames(context))",
             describe: { "the combo `\(name)` (\($0.binding.text))" },
             removal: { .removeCombo(id: $0.id) }
         )
     }
 
-    private static func renameLayer(_ use: ClaudeToolUse, app: AppModel) -> Outcome {
+    private static func renameLayer(_ use: ClaudeToolUse, context: KeymapContext) -> Outcome {
         guard let index = field(use, "layer")?.intValue else {
             return badArgument(use, "layer", "an integer")
         }
-        guard let layer = layer(index, in: app) else {
-            return failure(use, noSuchLayer(index, in: app))
+        guard let layer = layer(index, in: context) else {
+            return failure(use, noSuchLayer(index, in: context))
         }
         guard let raw = field(use, "name")?.stringValue else {
             return badArgument(use, "name", "a string")
@@ -912,9 +913,9 @@ enum AssistantTools {
     }
 
     private static func setBehavior(
-        _ use: ClaudeToolUse, app: AppModel, staged: [ProposedEdit]
+        _ use: ClaudeToolUse, context: KeymapContext, staged: [ProposedEdit]
     ) -> Outcome {
-        guard let keymap = app.keymap else { return failure(use, noKeymap) }
+        guard let keymap = context.keymap else { return failure(use, noKeymap) }
         guard let label = reference(use, "label") else {
             return badArgument(use, "label", "a non-empty string")
         }
@@ -1049,9 +1050,9 @@ enum AssistantTools {
     }
 
     private static func removeBehavior(
-        _ use: ClaudeToolUse, app: AppModel, staged: [ProposedEdit]
+        _ use: ClaudeToolUse, context: KeymapContext, staged: [ProposedEdit]
     ) -> Outcome {
-        guard let keymap = app.keymap else { return failure(use, noKeymap) }
+        guard let keymap = context.keymap else { return failure(use, noKeymap) }
         guard let label = reference(use, "label") else {
             return badArgument(use, "label", "a non-empty string")
         }
@@ -1067,15 +1068,15 @@ enum AssistantTools {
                 \(behaviorLabels(keymap))
                 """,
             describe: { "the behavior `&\(label)` (\(summary(of: $0)))" },
-            note: usage(of: "&\(label)", in: app),
+            note: usage(of: "&\(label)", in: context),
             removal: { .removeBehavior(id: $0.id) }
         )
     }
 
     private static func setMacro(
-        _ use: ClaudeToolUse, app: AppModel, staged: [ProposedEdit]
+        _ use: ClaudeToolUse, context: KeymapContext, staged: [ProposedEdit]
     ) -> Outcome {
-        guard let keymap = app.keymap else { return failure(use, noKeymap) }
+        guard let keymap = context.keymap else { return failure(use, noKeymap) }
         guard let label = reference(use, "label") else {
             return badArgument(use, "label", "a non-empty string")
         }
@@ -1188,9 +1189,9 @@ enum AssistantTools {
     }
 
     private static func removeMacro(
-        _ use: ClaudeToolUse, app: AppModel, staged: [ProposedEdit]
+        _ use: ClaudeToolUse, context: KeymapContext, staged: [ProposedEdit]
     ) -> Outcome {
-        guard let keymap = app.keymap else { return failure(use, noKeymap) }
+        guard let keymap = context.keymap else { return failure(use, noKeymap) }
         guard let label = reference(use, "label") else {
             return badArgument(use, "label", "a non-empty string")
         }
@@ -1207,13 +1208,13 @@ enum AssistantTools {
                 \(macroLabels(keymap))
                 """,
             describe: { "the macro `&\(label)` (\(summary(of: $0, sequenceLimit: 6)))" },
-            note: usage(of: "&\(label)", in: app),
+            note: usage(of: "&\(label)", in: context),
             removal: { .removeMacro(id: $0.id) }
         )
     }
 
-    private static func addLayer(_ use: ClaudeToolUse, app: AppModel) -> Outcome {
-        guard let keymap = app.keymap else { return failure(use, noKeymap) }
+    private static func addLayer(_ use: ClaudeToolUse, context: KeymapContext) -> Outcome {
+        guard let keymap = context.keymap else { return failure(use, noKeymap) }
         guard let raw = field(use, "name")?.stringValue else {
             return badArgument(use, "name", "a string")
         }
@@ -1222,15 +1223,15 @@ enum AssistantTools {
             return failure(use, problem)
         }
 
-        var index = app.layers.count
+        var index = context.layers.count
         switch integerArgument(use, "position") {
         case .failure(let outcome): return outcome
         case .absent: break
         case .value(let position):
-            guard (0...app.layers.count).contains(position) else {
+            guard (0...context.layers.count).contains(position) else {
                 return failure(use, """
-                    a new layer can go anywhere from 0 to \(app.layers.count) — \
-                    this keymap has \(app.layers.count) layers — but \(position) \
+                    a new layer can go anywhere from 0 to \(context.layers.count) — \
+                    this keymap has \(context.layers.count) layers — but \(position) \
                     was given
                     """)
             }
@@ -1240,7 +1241,7 @@ enum AssistantTools {
         // The key count comes from the layout, or from an existing layer when
         // no layout is loaded. Guessing it would put a layer of the wrong length
         // into the file, which does not build.
-        let keyCount = app.layout.isEmpty ? app.layers.first?.bindings.count : app.layout.count
+        let keyCount = context.layout.isEmpty ? context.layers.first?.bindings.count : context.layout.count
 
         var bindings: [KeyBinding]
         switch arrayArgument(use, "bindings", "an array of strings") {
@@ -1293,7 +1294,7 @@ enum AssistantTools {
         }
 
         let affected = keymap.layerReferencesAffected(byInsertingAt: index)
-        let placement = index == app.layers.count
+        let placement = index == context.layers.count
             ? "It goes at the end, so no existing layer is renumbered."
             : "Layer \(index) and everything after it moves up one number."
         return Outcome(
@@ -1310,22 +1311,22 @@ enum AssistantTools {
         )
     }
 
-    private static func removeLayer(_ use: ClaudeToolUse, app: AppModel) -> Outcome {
-        guard let keymap = app.keymap else { return failure(use, noKeymap) }
+    private static func removeLayer(_ use: ClaudeToolUse, context: KeymapContext) -> Outcome {
+        guard let keymap = context.keymap else { return failure(use, noKeymap) }
         guard let index = field(use, "layer")?.intValue else {
             return badArgument(use, "layer", "an integer")
         }
-        guard let layer = layer(index, in: app) else {
-            return failure(use, noSuchLayer(index, in: app))
+        guard let layer = layer(index, in: context) else {
+            return failure(use, noSuchLayer(index, in: context))
         }
-        guard app.layers.count > 1 else {
+        guard context.layers.count > 1 else {
             return failure(use, """
                 a keymap needs at least one layer, and this is the only one left
                 """)
         }
 
         let affected = keymap.layerReferencesAffected(byRemoving: index)
-        let moved = index == app.layers.count - 1
+        let moved = index == context.layers.count - 1
             ? "It is the last layer, so no other layer is renumbered."
             : "Every layer after it moves down one number."
         return Outcome(
@@ -1387,7 +1388,7 @@ enum AssistantTools {
     /// removal. `KeymapFile` cannot rewrite `&mo 2` safely — it may sit inside a
     /// macro or a node the editor does not model — so the bindings that name a
     /// number that moves are named instead, both here and on the card.
-    static func renumbering(_ affected: [String]) -> String? {
+    public static func renumbering(_ affected: [String]) -> String? {
         guard !affected.isEmpty else { return nil }
         return """
             These keep the layer number they were written with and will point at \
@@ -1397,15 +1398,15 @@ enum AssistantTools {
 
     // MARK: - Shared validation
 
-    private static func layer(_ index: Int, in app: AppModel) -> KeymapLayer? {
-        app.layers.indices.contains(index) ? app.layers[index] : nil
+    private static func layer(_ index: Int, in context: KeymapContext) -> KeymapLayer? {
+        context.layers.indices.contains(index) ? context.layers[index] : nil
     }
 
-    private static func noSuchLayer(_ index: Int, in app: AppModel) -> String {
-        guard !app.layers.isEmpty else { return noKeymap }
+    private static func noSuchLayer(_ index: Int, in context: KeymapContext) -> String {
+        guard !context.layers.isEmpty else { return noKeymap }
         return """
-            layer \(index) does not exist; this keymap has \(app.layers.count) \
-            layers, numbered 0 to \(app.layers.count - 1)
+            layer \(index) does not exist; this keymap has \(context.layers.count) \
+            layers, numbered 0 to \(context.layers.count - 1)
             """
     }
 
@@ -1418,8 +1419,8 @@ enum AssistantTools {
         items.isEmpty ? "none" : items.map(describe).joined(separator: ", ")
     }
 
-    private static func comboNames(_ app: AppModel) -> String {
-        list(app.combos) { "`\($0.nodeName)`" }
+    private static func comboNames(_ context: KeymapContext) -> String {
+        list(context.combos) { "`\($0.nodeName)`" }
     }
 
     private static func stagedCombo(named name: String, in staged: [ProposedEdit]) -> KeymapCombo? {
@@ -1451,9 +1452,9 @@ enum AssistantTools {
     /// a reference from inside another behavior or a macro is not modelled, so
     /// the sentence says where it looked rather than claiming the thing is
     /// unused.
-    private static func usage(of behavior: String, in app: AppModel) -> String {
+    private static func usage(of behavior: String, in context: KeymapContext) -> String {
         var sites: [String] = []
-        for layer in app.layers {
+        for layer in context.layers {
             let positions = layer.bindings.indices.filter { layer.bindings[$0].behavior == behavior }
             guard !positions.isEmpty else { continue }
             sites.append("""
@@ -1461,7 +1462,7 @@ enum AssistantTools {
                 \(positions.map(String.init).joined(separator: ", "))
                 """)
         }
-        for combo in app.combos where combo.binding.behavior == behavior {
+        for combo in context.combos where combo.binding.behavior == behavior {
             sites.append("combo `\(combo.nodeName)`")
         }
         guard !sites.isEmpty else {
@@ -1571,7 +1572,7 @@ enum AssistantTools {
     /// of an existing hold-tap should not silently drop its `flavor`. A `null`
     /// value removes the property — the only way to say "stop setting this",
     /// since an absent key means "leave it alone".
-    private static func behaviorProperties(
+    static func behaviorProperties(
         _ raw: [String: JSONValue], merging existing: [BehaviorProperty]
     ) -> Parsed<[BehaviorProperty]> {
         var merged = existing
@@ -1611,7 +1612,7 @@ enum AssistantTools {
         return .success(merged)
     }
 
-    private static func behaviorValue(_ json: JSONValue) -> BehaviorValue? {
+    static func behaviorValue(_ json: JSONValue) -> BehaviorValue? {
         if let number = json.intValue { return .integer(number) }
         if let text = json.stringValue { return .string(text) }
         if json.boolValue == true { return .flag }
@@ -1634,7 +1635,7 @@ enum AssistantTools {
     /// A value read out of a tool call, or why it could not be. Absent and
     /// present-but-wrong are already told apart by ``badArgument``; this is for
     /// the readings that fail for a reason of their own.
-    private enum Parsed<Value> {
+    enum Parsed<Value> {
         case success(Value)
         case failure(String)
     }
@@ -1643,7 +1644,7 @@ enum AssistantTools {
     /// so `&kp ESC` means here exactly what it means in the keymap. Anything
     /// that is not exactly one binding is rejected: `&kp A &kp B` in one key's
     /// slot would silently drop the second half.
-    private static func parseBinding(_ text: String) -> Parsed<KeyBinding> {
+    static func parseBinding(_ text: String) -> Parsed<KeyBinding> {
         let parsed = BindingParser.parse(text)
         guard parsed.count == 1, let binding = parsed.first else {
             return .failure("""
@@ -1660,7 +1661,7 @@ enum AssistantTools {
     /// Models routinely fill an optional parameter with `null` rather than
     /// leaving it out. Reading that as "present, but not an integer" would fail
     /// the call with a complaint about a value the model never meant to send.
-    private static func field(_ use: ClaudeToolUse, _ name: String) -> JSONValue? {
+    static func field(_ use: ClaudeToolUse, _ name: String) -> JSONValue? {
         guard let value = use.input[name], value != .null else { return nil }
         return value
     }
@@ -1689,7 +1690,7 @@ enum AssistantTools {
     /// presence check, as this once was at every optional argument, the middle
     /// case is easy to leave out, and a bad argument then becomes a field the
     /// tool silently skips.
-    private enum ArgumentRead<Value> {
+    enum ArgumentRead<Value> {
         case value(Value)
         case absent
         case failure(Outcome)
@@ -1700,7 +1701,7 @@ enum AssistantTools {
     /// The name being written twice — once to fetch, once to complain — is what
     /// let a typo in the second spelling go unnoticed, so it is written once
     /// here and nowhere else.
-    private static func argument<Value>(
+    static func argument<Value>(
         _ use: ClaudeToolUse, _ name: String, _ expected: String,
         _ read: (JSONValue) -> Value?
     ) -> ArgumentRead<Value> {
@@ -1709,23 +1710,23 @@ enum AssistantTools {
         return .value(read)
     }
 
-    private static func integerArgument(_ use: ClaudeToolUse, _ name: String) -> ArgumentRead<Int> {
+    static func integerArgument(_ use: ClaudeToolUse, _ name: String) -> ArgumentRead<Int> {
         argument(use, name, "an integer", \.intValue)
     }
 
-    private static func stringArgument(_ use: ClaudeToolUse, _ name: String) -> ArgumentRead<String> {
+    static func stringArgument(_ use: ClaudeToolUse, _ name: String) -> ArgumentRead<String> {
         argument(use, name, "a string", \.stringValue)
     }
 
     /// `expected` is spelled out by the caller because an array of integers and
     /// an array of strings are told apart only by what the tool wanted.
-    private static func arrayArgument(
+    static func arrayArgument(
         _ use: ClaudeToolUse, _ name: String, _ expected: String
     ) -> ArgumentRead<[JSONValue]> {
         argument(use, name, expected, \.arrayValue)
     }
 
-    private static func objectArgument(
+    static func objectArgument(
         _ use: ClaudeToolUse, _ name: String, _ expected: String
     ) -> ArgumentRead<[String: JSONValue]> {
         argument(use, name, expected, \.objectValue)
