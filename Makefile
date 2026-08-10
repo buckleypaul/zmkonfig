@@ -3,8 +3,16 @@
 
 APP_NAME        := Zmkonfig
 BUNDLE_ID       := com.buckleypaul.zmkonfig
-VERSION         := 0.1.0
 CONFIG          ?= release
+
+# The version in Info.plist comes from the newest `v*` tag (v1.2.3 → 1.2.3), so
+# a release cannot claim a version the tag disagrees with. Two cases have no
+# tags to read: a source tarball has no `.git` at all — Homebrew's formula
+# passes `VERSION=` on the command line, which overrides this — and a clone
+# fetched without tags. Neither, and the version says so out loud rather than
+# quietly naming a release this build is not.
+GIT_VERSION     := $(shell git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null | sed 's/^v//')
+VERSION         ?= $(if $(GIT_VERSION),$(GIT_VERSION),0.0.0-dev)
 
 BUILD_DIR       := .build
 APP             := $(BUILD_DIR)/$(APP_NAME).app
@@ -47,9 +55,13 @@ FOUND_IDENTITY  := $(shell ids=$$(security find-identity -v -p codesigning 2>/de
 	done)
 CODESIGN_IDENTITY ?= $(if $(FOUND_IDENTITY),$(FOUND_IDENTITY),-)
 
-.PHONY: all build bundle run test clean
+.PHONY: all build bundle run test clean version
 
 all: bundle
+
+## What version this build will claim. Read it before tagging a release.
+version:
+	@echo $(VERSION)
 
 ## Compile the executable and its resource bundle.
 build:

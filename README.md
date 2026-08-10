@@ -34,6 +34,21 @@ screen, and a build is never reported as succeeding unless it did.
   `.xcodeproj` and none is needed
 - `git` and `gh` on `PATH` (`gh` provides the GitHub credentials)
 
+## Install
+
+```sh
+brew install buckleypaul/tap/zmkonfig
+```
+
+Homebrew builds it from source, so this takes a few minutes and wants Command
+Line Tools present. Building locally is also what keeps Gatekeeper out of the
+picture: code you compiled yourself is never quarantined, so there is no
+notarized download to wait on and no "unidentified developer" dialog to click
+through.
+
+The `.app` lands in the Homebrew prefix rather than `/Applications`. Launch it
+with `zmkonfig`, or drag `$(brew --prefix zmkonfig)/Zmkonfig.app` to the Dock.
+
 ## Build and run
 
 ```sh
