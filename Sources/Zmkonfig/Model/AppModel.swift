@@ -11,6 +11,15 @@ enum SidebarSelection: Hashable {
     case macro(KeymapMacro.ID)
 }
 
+/// What the Edit tab is editing. Derived from ``SidebarSelection`` rather than
+/// stored, so the inspector and the board cannot hold different opinions.
+enum EditorTarget: Equatable {
+    case key
+    case combo(KeymapCombo.ID)
+    case behavior(KeymapBehavior.ID)
+    case macro(KeymapMacro.ID)
+}
+
 /// Everything the editor side of the app needs: the open repo, its keymap, the
 /// keyboard layout it is drawn with, and the current selection.
 @MainActor
@@ -60,7 +69,29 @@ final class AppModel {
         }
     }
     private(set) var selectedLayerID: Int?
-    var selectedKeyIndex: Int?
+    /// The key the board has picked, if any.
+    ///
+    /// Not settable from outside: a writer that selects a key without also
+    /// taking the sidebar off a behavior or macro puts the board on one thing
+    /// and the inspector on another. ``selectKey(_:)`` and ``reveal(layerID:keyIndex:)``
+    /// are the ways in, and both go through ``sidebarSelection``.
+    private(set) var selectedKeyIndex: Int?
+
+    /// The single authority for what the Edit tab shows, so the inspector
+    /// cannot disagree with the board.
+    ///
+    /// A layer selected — or nothing selected — means the board owns the tab
+    /// and it edits the picked key; anything else in the sidebar owns it
+    /// instead. There is no combination of the two selection axes that leaves
+    /// this ambiguous, which is the point of deriving it in one place.
+    var editorTarget: EditorTarget {
+        switch sidebarSelection {
+        case .combo(let id): .combo(id)
+        case .behavior(let id): .behavior(id)
+        case .macro(let id): .macro(id)
+        case .layer, .none: .key
+        }
+    }
 
     /// The board highlights the selected combo's chord, and nothing otherwise.
     /// Derived rather than stored: six sites used to keep a stored copy in step
@@ -133,15 +164,9 @@ final class AppModel {
 
     var macros: [KeymapMacro] { keymap?.macros ?? [] }
 
-    var selectedBehavior: KeymapBehavior? {
-        guard case .behavior(let id) = sidebarSelection else { return nil }
-        return behaviors.first { $0.id == id }
-    }
-
-    var selectedMacro: KeymapMacro? {
-        guard case .macro(let id) = sidebarSelection else { return nil }
-        return macros.first { $0.id == id }
-    }
+    // There is deliberately no `selectedBehavior`/`selectedMacro` here. Asking
+    // the model "is a behavior selected?" is what let the inspector answer
+    // differently from the board; ``editorTarget`` is the one way to ask.
 
     /// Everything about the combos that would stop the keymap being written.
     ///

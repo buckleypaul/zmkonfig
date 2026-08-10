@@ -35,15 +35,7 @@ struct InspectorPane: View {
 
             switch tab {
             case .edit:
-                if let combo = model.selectedCombo {
-                    ComboEditorView(model: model, combo: combo)
-                } else if let behavior = model.selectedBehavior {
-                    BehaviorEditorView(model: model, behavior: behavior)
-                } else if let macro = model.selectedMacro {
-                    MacroEditorView(model: model, macro: macro)
-                } else {
-                    BindingEditorView(model: model)
-                }
+                editor(for: model.editorTarget)
             case .explain:
                 ExplainPanelView(model: model, explain: explain)
             case .build:
@@ -69,6 +61,35 @@ struct InspectorPane: View {
         }
     }
 
+    /// The editor for whatever ``AppModel/editorTarget`` names. An id the
+    /// keymap no longer answers to falls back to the key editor, which is where
+    /// `reconcileSelection` is about to put the selection anyway.
+    @ViewBuilder
+    private func editor(for target: EditorTarget) -> some View {
+        switch target {
+        case .combo(let id):
+            if let combo = model.combos.first(where: { $0.id == id }) {
+                ComboEditorView(model: model, combo: combo)
+            } else {
+                BindingEditorView(model: model)
+            }
+        case .behavior(let id):
+            if let behavior = model.behaviors.first(where: { $0.id == id }) {
+                BehaviorEditorView(model: model, behavior: behavior)
+            } else {
+                BindingEditorView(model: model)
+            }
+        case .macro(let id):
+            if let macro = model.macros.first(where: { $0.id == id }) {
+                MacroEditorView(model: model, macro: macro)
+            } else {
+                BindingEditorView(model: model)
+            }
+        case .key:
+            BindingEditorView(model: model)
+        }
+    }
+
     private func title(of tab: Tab) -> String {
         switch tab {
         // The first tab edits whichever thing is selected, so it says which one
@@ -81,11 +102,11 @@ struct InspectorPane: View {
     }
 
     private var editTitle: String {
-        switch model.sidebarSelection {
+        switch model.editorTarget {
         case .combo: "Combo"
         case .behavior: "Behavior"
         case .macro: "Macro"
-        case .layer, .none: "Key"
+        case .key: "Key"
         }
     }
 }
