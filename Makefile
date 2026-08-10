@@ -22,8 +22,16 @@ RESOURCES_DIR   := $(CONTENTS)/Resources
 # SwiftPM names resource bundles <package>_<target>.bundle.
 RESOURCE_BUNDLE := Zmkonfig_ZmkonfigKit.bundle
 
-# Deferred: only valid once `swift build` has run.
-BIN_PATH         = $(shell swift build -c $(CONFIG) --show-bin-path)
+# Extra flags for every `swift build` below. Empty for an ordinary build; the
+# Homebrew formula passes `--disable-sandbox`. It has to: Homebrew runs the
+# build inside a sandbox-exec sandbox, SwiftPM evaluates Package.swift inside
+# one of its own, and nesting them fails outright with "sandbox_apply:
+# Operation not permitted" — reported only as an invalid manifest.
+SWIFTPM_FLAGS   ?=
+
+# Deferred: only valid once `swift build` has run. Needs SWIFTPM_FLAGS too —
+# --show-bin-path still evaluates the manifest.
+BIN_PATH         = $(shell swift build $(SWIFTPM_FLAGS) -c $(CONFIG) --show-bin-path)
 
 # Who signs the app. An ad-hoc signature (`-`) needs no setup, but it gives the
 # app a different code identity on every rebuild — so the keychain no longer
@@ -65,7 +73,7 @@ version:
 
 ## Compile the executable and its resource bundle.
 build:
-	swift build -c $(CONFIG)
+	swift build $(SWIFTPM_FLAGS) -c $(CONFIG)
 
 ## Assemble .build/Zmkonfig.app around the compiled executable.
 bundle: build
