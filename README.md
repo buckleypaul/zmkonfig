@@ -1,8 +1,7 @@
 # Zmkonfig
 
 A native macOS keymap editor for [ZMK](https://zmk.dev) keyboards — a desktop
-take on [nickcoutsos/keymap-editor](https://github.com/nickcoutsos/keymap-editor),
-built for a Ferris Sweep (34 keys, 5 layers) but not tied to it.
+take on [nickcoutsos/keymap-editor](https://github.com/nickcoutsos/keymap-editor).
 
 It opens a ZMK config repository, draws the keyboard from its layout data, lets
 you edit bindings on any layer, writes the `.keymap` file back, shows you the
@@ -12,14 +11,29 @@ it to you in English, or take a request in English and propose the edit.
 
 ![The editor: layer list and combos on the left, the board in the middle, the selected key's binding on the right](docs/screenshots/editor.png)
 
+## Which keyboards
+
+Any of them. The board is drawn from layout data, not from anything baked into
+the app: it reads your repo's own `config/info.json` when it has one, and
+otherwise browses the
+[keymap-editor-contrib](https://github.com/nickcoutsos/keymap-editor-contrib)
+catalog — 86 keyboards at the time of writing, from a 9-key macropad to a 6×9
+ortho to a Kinesis Advantage 360 Pro. Key positions carry width, height and
+rotation, so staggered and ergo boards render as they physically are. Key counts,
+layer counts and split-ness are all just properties of the data.
+
+The screenshots below happen to be a 34-key split, because that is what the
+author types on.
+
 ## Why
 
-A 34-key keymap is mostly invisible. The `.keymap` file is devicetree — a wall of
+A ZMK keymap is mostly invisible. The `.keymap` file is devicetree — a wall of
 `&hml LEFT_GUI A` — and the thing you actually want to know ("which finger is
-Escape under, and why does `sd` not fire a modifier?") is nowhere in it. The web
-editors solve the drawing problem but hand your config to a browser tab. Zmkonfig
-draws the board, keeps the file, and adds the layer of prose that neither the file
-nor the picture has.
+Escape under, and why does `sd` not fire a modifier?") is nowhere in it. The more
+your board leans on layers and hold-taps, the more of it lives somewhere no text
+editor shows you. The web editors solve the drawing problem but hand your config
+to a browser tab. Zmkonfig draws the board, keeps the file, and adds the layer of
+prose that neither the file nor the picture has.
 
 The rule the whole app is built around: **it never regenerates your `.keymap`.**
 It parses the devicetree, finds the byte ranges it means to change, and rewrites
@@ -56,7 +70,8 @@ with `zmkonfig`, or drag `$(brew --prefix zmkonfig)/Zmkonfig.app` to the Dock.
 1. **Open a repo** — `owner/name`, cloned on first use. The slug you opened
    last is reopened on the next launch.
 2. **Pick the layout** — from the repo's own `config/info.json` when it has one,
-   otherwise from the remote keyboard catalog (the Sweep is `cradio`).
+   otherwise searched out of the keyboard catalog. A keyboard with several
+   layout variants lets you choose between them.
 3. **Edit** — click a key, choose a behavior, fill in one slot per parameter.
 4. **Save** — writes the keymap, shows the real `git diff`, then commits and
    pushes on your say-so.
@@ -198,8 +213,8 @@ they are safe rather than merely discouraged.
 
 ## Use cases
 
-- **Read a keymap you inherited.** Clone someone's Sweep config, look at the
-  board, and ask what the Nav layer is for.
+- **Read a keymap you inherited.** Clone someone's config, look at the board, and
+  ask what the Nav layer is for.
 - **Understand your own timings.** `tap-preferred`, `quick-tap-ms`,
   `require-prior-idle-ms` and `hold-trigger-key-positions` are four numbers that
   decide whether home-row mods are usable. The inspector says what yours mean.
