@@ -71,7 +71,15 @@ struct BoardPane: View {
         if model.repo == nil {
             Hint(text: "Open a repository to start editing.\nA GitHub owner/name slug, cloned on first use.")
         } else if model.layout.isEmpty {
-            Hint(text: "No keyboard layout loaded. Choose a keyboard from the catalog.")
+            VStack(spacing: theme.metric(.spacingM)) {
+                Caption("This repository does not say which keyboard it is for, so there is nothing to draw the keymap on yet.")
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Choose a Keyboard…") { model.promptForKeyboard() }
+            }
+            .frame(maxWidth: theme.metric(.dialogWidth), maxHeight: .infinity)
+            .frame(maxWidth: .infinity)
+            .padding(theme.metric(.spacingL))
         } else if let layer = model.selectedLayer {
             KeyboardView(
                 layout: model.layout,

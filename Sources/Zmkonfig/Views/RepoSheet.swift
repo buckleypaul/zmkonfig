@@ -63,6 +63,12 @@ struct CatalogSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: theme.metric(.spacingS)) {
                 SheetTitle("Keyboard")
+                // This sheet opens on its own when a repo declares no layout,
+                // so it has to say why it is here rather than just appearing.
+                if model.keyboard == nil {
+                    Caption("This repository has no `config/info.json`, so it does not say which keyboard it is for. Pick it here and it is remembered for next time.")
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 TextField("Search the keyboard catalog", text: $query)
                     .textFieldStyle(.roundedBorder)
             }

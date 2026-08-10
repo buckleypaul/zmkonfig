@@ -28,8 +28,9 @@ final class AppModel {
     /// The slug opened last, reopened on the next launch. There is no built-in
     /// default repo — the first launch opens nothing and waits for the sheet.
     static let lastSlugKey = "lastRepoSlug"
-    /// Used when the repo ships no `config/info.json` of its own.
-    static let fallbackKeyboardID = "cradio"
+    /// `owner/name` → the catalog keyboard id chosen for it, for repos that
+    /// declare no layout of their own. See ``keyboardDefinition(forRepoAt:slug:)``.
+    nonisolated static let keyboardBySlugKey = "keyboardBySlug"
 
     // Repo
     private(set) var repo: ZmkRepo?
@@ -390,7 +391,7 @@ final class AppModel {
         // the assignment needs the main actor.
         let path = repo.keymapPath
         async let parsed = Task.detached { try KeymapFile(contentsOf: path) }.value
-        async let definition = Self.keyboardDefinition(forRepoAt: repo.localURL)
+        async let definition = Self.keyboardDefinition(forRepoAt: repo.localURL, slug: repo.slug)
 
         do {
             let file = try await parsed
@@ -412,21 +413,63 @@ final class AppModel {
         do {
             keyboard = try await definition
             layoutKey = nil
+            // Nothing declared it and nothing was remembered: ask, rather than
+            // draw the keymap on whatever board happens to be lying around.
+            if keyboard == nil { promptForKeyboard() }
         } catch {
+            // A remembered id that will not load leaves the board empty and the
+            // reason on screen. The prompt is not opened on top of the alert —
+            // the hint under the board and the toolbar's keyboard button both
+            // still lead to the picker.
+            keyboard = nil
+            layoutKey = nil
             self.error = AppError(title: "Could not load keyboard layout", error: error)
         }
 
         refreshComboProblems()
     }
 
-    /// The layout the repository declares, or the fallback when it declares
-    /// none. `nonisolated` so ``loadKeymapAndLayout`` can start it alongside the
+    /// The layout to draw the keymap on: what the repository declares, else
+    /// what was last chosen for this repository, else nothing.
+    ///
+    /// **There is no default keyboard.** A keymap drawn on the wrong physical
+    /// layout still looks like a keyboard — the keys land in plausible places
+    /// and every one of them is in the wrong position — so a guess here is worse
+    /// than an empty board and a question. `nil` means ask.
+    ///
+    /// `config/info.json` wins over the remembered choice because it is the
+    /// repository's own declaration and is version controlled; a local
+    /// preference must not silently contradict it. The remembered id is
+    /// therefore only ever consulted for repositories that declare nothing,
+    /// which are exactly the ones that get prompted.
+    ///
+    /// `nonisolated` so ``loadKeymapAndLayout`` can start it alongside the
     /// keymap parse rather than after it.
-    private nonisolated static func keyboardDefinition(forRepoAt root: URL) async throws
-        -> KeyboardDefinition
-    {
+    private nonisolated static func keyboardDefinition(
+        forRepoAt root: URL, slug: String
+    ) async throws -> KeyboardDefinition? {
         if let fromRepo = try await LayoutCatalog.shared.definitionForRepo(root) { return fromRepo }
-        return try await LayoutCatalog.shared.definition(id: fallbackKeyboardID)
+        guard let remembered = rememberedKeyboardID(forSlug: slug) else { return nil }
+        return try await LayoutCatalog.shared.definition(id: remembered)
+    }
+
+    /// The keyboard chosen for a repository on a previous run, if any.
+    nonisolated static func rememberedKeyboardID(forSlug slug: String) -> String? {
+        let map = UserDefaults.standard.dictionary(forKey: keyboardBySlugKey) as? [String: String]
+        return map?[slug]
+    }
+
+    nonisolated static func rememberKeyboardID(_ id: String, forSlug slug: String) {
+        var map =
+            UserDefaults.standard.dictionary(forKey: keyboardBySlugKey) as? [String: String] ?? [:]
+        map[slug] = id
+        UserDefaults.standard.set(map, forKey: keyboardBySlugKey)
+    }
+
+    /// Opens the catalog picker, with the catalog already on its way.
+    func promptForKeyboard() {
+        isShowingCatalogSheet = true
+        Task { await loadCatalog() }
     }
 
     func loadCatalog() async {
@@ -440,12 +483,20 @@ final class AppModel {
         }
     }
 
+    /// Picks a keyboard by catalog id and remembers it for the open repository.
+    ///
+    /// The choice is recorded even when the repository declares its own layout
+    /// and the record will therefore not be read back — it costs a defaults key
+    /// and means the answer is already there if `config/info.json` later goes
+    /// away. Only a load that succeeded is remembered: an id that does not
+    /// resolve is not an answer worth keeping.
     func chooseKeyboard(id: String) async {
         busyMessage = "Loading \(id)…"
         defer { busyMessage = nil }
         do {
             keyboard = try await LayoutCatalog.shared.definition(id: id)
             layoutKey = nil
+            if let slug = repo?.slug { Self.rememberKeyboardID(id, forSlug: slug) }
             // The layout decides which key positions a combo may name.
             refreshComboProblems()
         } catch {

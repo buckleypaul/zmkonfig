@@ -143,9 +143,10 @@ read the same item) and account `anthropic-api-key`
   `AnthropicClient`, and no other type reads the keychain item. A feature that
   needs Claude takes a `ClaudeRequest`, which holds the task, the answer and the
   failure so the view never touches a service.
-- **Never print, log, or persist the key.** `UserDefaults` holds the selected
-  model id and the cached model list, and nothing else. It must not reach the
-  keymap, a commit message, a prompt, or stdout.
+- **Never print, log, or persist the key.** Of the LLM settings `UserDefaults`
+  holds the selected model id and the cached model list, and nothing else — the
+  key itself is never written there. It must not reach the keymap, a commit
+  message, a prompt, or stdout.
 - **Debugging: read the attributes, not the secret.**
   `security find-generic-password -s com.buckleypaul.zmkonfig -a anthropic-api-key`
   shows whether an item exists and when it changed, which answers almost every

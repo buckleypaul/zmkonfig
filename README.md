@@ -69,8 +69,9 @@ with `zmkonfig`, or drag `$(brew --prefix zmkonfig)/Zmkonfig.app` to the Dock.
 
 1. **Open a repo** — `owner/name`, cloned on first use. The slug you opened
    last is reopened on the next launch.
-2. **Pick the layout** — from the repo's own `config/info.json` when it has one,
-   otherwise searched out of the keyboard catalog. A keyboard with several
+2. **Pick the layout** — from the repo's own `config/info.json` when it has one.
+   When it has none the app asks which keyboard the repo is for rather than
+   guessing, and remembers the answer for that repo. A keyboard with several
    layout variants lets you choose between them.
 3. **Edit** — click a key, choose a behavior, fill in one slot per parameter.
 4. **Save** — writes the keymap, shows the real `git diff`, then commits and
