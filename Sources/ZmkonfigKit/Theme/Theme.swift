@@ -90,6 +90,11 @@ public enum ThemeMetricToken: String, CaseIterable, Sendable {
 
     case statusDotSize
     case numericFieldWidth
+    /// Room to leave at the trailing edge of a scrolling list for the overlay
+    /// scroller, which AppKit draws on top of the content. A control flush to
+    /// that edge — the `+` in a sidebar section header — is otherwise
+    /// unclickable for as long as the scroller is showing.
+    case scrollerGutter
 
     case boardMinScale
     case boardMaxScale
@@ -529,6 +534,7 @@ extension Theme {
 
             .statusDotSize: 7,
             .numericFieldWidth: 120,
+            .scrollerGutter: 12,
 
             .boardMinScale: 0.4,
             .boardMaxScale: 1.6,

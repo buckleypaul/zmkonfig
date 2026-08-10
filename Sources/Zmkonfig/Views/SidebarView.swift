@@ -152,6 +152,7 @@ struct SidebarView: View {
                     .disabled(model.keymap == nil)
                     .help("Define a behavior")
                 }
+                .padding(.trailing, theme.metric(.scrollerGutter))
             }
 
             Section {
@@ -175,6 +176,9 @@ struct SidebarView: View {
     /// Macros section is where one is made.
     private static let behaviorKinds = BehaviorKind.allCases.filter { $0 != .macroBehavior }
 
+    /// The `+` is inset from the trailing edge by `scrollerGutter`: the list's
+    /// overlay scroller is drawn over the header and would otherwise swallow
+    /// the click whenever the sidebar is scrolled.
     private func sectionHeader(
         _ title: String, help: String, add: @escaping () -> Void
     ) -> some View {
@@ -188,6 +192,7 @@ struct SidebarView: View {
             .disabled(model.keymap == nil)
             .help(help)
         }
+        .padding(.trailing, theme.metric(.scrollerGutter))
     }
 
     /// Text on a selected row. A theme color cannot be right here: the fill
