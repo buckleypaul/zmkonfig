@@ -62,6 +62,11 @@ struct InspectorPane: View {
             case .layer, .none: break
             }
         }
+        // The same for a key: clicking one while Build or Assist is open would
+        // otherwise highlight a keycap and change nothing anyone can see.
+        .onChange(of: model.selectedKeyIndex) { _, index in
+            if index != nil { tab = .edit }
+        }
     }
 
     private func title(of tab: Tab) -> String {

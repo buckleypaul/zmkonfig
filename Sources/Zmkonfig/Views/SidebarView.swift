@@ -210,7 +210,14 @@ struct SidebarView: View {
 
     private func layerRow(_ layer: KeymapLayer) -> some View {
         let selected = model.sidebarSelection == .layer(layer.id)
+        // The board goes on showing a layer while a combo, behavior or macro is
+        // selected, and then no row is highlighted — which reads as though no
+        // layer were open. This marks the one the board is actually drawing.
+        let onBoard = model.selectedLayerID == layer.id
         return HStack(spacing: theme.metric(.spacingS)) {
+            // Always laid out, so a row does not shift when the mark appears.
+            StatusDot(color: onBoard && !selected ? theme.color(.accent) : .clear)
+                .help(onBoard ? "Showing on the board" : "")
             rowDetail("\(layer.id)", font: .monoSmall, selected: selected)
                 .frame(minWidth: 14, alignment: .trailing)
             VStack(alignment: .leading, spacing: 0) {

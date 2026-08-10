@@ -408,7 +408,15 @@ final class AppModel {
     /// removing one of its key positions rather than picking a key to edit.
     func selectKey(_ index: Int) {
         guard var combo = selectedCombo else {
-            selectedKeyIndex = index
+            // A behavior or macro selected in the sidebar owns the inspector,
+            // and unlike a combo it is not edited by clicking the board. So a
+            // click here means "edit this key" and has to take the inspector
+            // back, or the key would highlight with nothing to show for it.
+            if let layerID = selectedLayerID, sidebarSelection != .layer(layerID) {
+                reveal(layerID: layerID, keyIndex: index)
+            } else {
+                selectedKeyIndex = index
+            }
             return
         }
         if let existing = combo.keyPositions.firstIndex(of: index) {
