@@ -50,6 +50,23 @@ enum LayerProperty {
 protocol KeymapNodeModel: Identifiable, Sendable {
     var nodeName: String { get }
     var label: String { get }
+    /// The ``BehaviorNote`` this node carries. Defaulted, because only
+    /// behaviors have one so far and a macro should not have to say it has
+    /// none — the splice is written once against this protocol, and a model
+    /// that never has a note simply never produces a note edit.
+    var note: String? { get }
+}
+
+extension KeymapNodeModel {
+    var note: String? { nil }
+}
+
+/// What a binding's `&label` names, when this keymap is the one that defines
+/// it. Behaviors and macros share the namespace — `&hml` and `&em` are looked
+/// up the same way — so resolving one is a single question with three answers.
+public enum BoundNode: Sendable {
+    case behavior(KeymapBehavior)
+    case macro(KeymapMacro)
 }
 
 extension KeymapBehavior: KeymapNodeModel {}
@@ -255,10 +272,16 @@ public struct KeymapFile: Sendable {
                     node: NodeAnchor(node: node, bytes: bytes),
                     isInSection: macrosNode?.children.contains { $0 === node } ?? false
                 ))
-            } else if let behavior = BehaviorReader.read(node) {
+            } else if var behavior = BehaviorReader.read(node) {
+                // The note comes off the anchor rather than out of
+                // `BehaviorReader`, which is given a parsed node and no bytes:
+                // a comment is exactly what the parser threw away, so finding
+                // it is a job for the type that already holds source positions.
+                let anchor = NodeAnchor(node: node, bytes: bytes, readsNote: true)
+                behavior.note = anchor.note
                 behaviorAnchors.append(ModelAnchor(
                     original: behavior,
-                    node: NodeAnchor(node: node, bytes: bytes),
+                    node: anchor,
                     isInSection: behaviorsNode?.children.contains { $0 === node } ?? false
                 ))
             }
@@ -349,6 +372,19 @@ public struct KeymapFile: Sendable {
     }
 
     // MARK: - Behaviors and macros
+
+    /// What `&hml` refers to in this keymap, or nil when nothing here defines
+    /// it — a stock ZMK behavior, or one that came in through an include.
+    ///
+    /// The one place the `&` is stripped and a label is matched. Every feature
+    /// that asks "what is this binding bound to" asks here, so a change to how
+    /// labels resolve is one change rather than several that must agree.
+    public func node(boundAs code: String) -> BoundNode? {
+        let label = String(code.drop(while: { $0 == "&" }))
+        if let behavior = behaviors.first(where: { $0.label == label }) { return .behavior(behavior) }
+        if let macro = macros.first(where: { $0.label == label }) { return .macro(macro) }
+        return nil
+    }
 
     /// Adds the behavior, or replaces the one with the same id.
     ///
@@ -961,6 +997,10 @@ public struct KeymapFile: Sendable {
                 from: properties(anchor.original), to: properties(model),
                 line: line, wholeLineProperties: wholeLineProperties
             )
+            if model.note != anchor.original.note,
+               let edit = anchor.node.noteEdit(to: model.note, in: bytes) {
+                edits.append(edit)
+            }
             if model.nodeName != anchor.original.nodeName {
                 edits.append(.replace(anchor.node.nameRange, with: model.nodeName))
             }

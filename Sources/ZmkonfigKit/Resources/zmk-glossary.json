@@ -1,0 +1,682 @@
+[
+  {
+    "term": "&kp",
+    "title": "Key press",
+    "section": "behavior",
+    "summary": "Sends one keycode, the way an ordinary keyboard key does.",
+    "detail": "The plainest binding there is. Press the key and the keycode goes to the computer; release it and the keycode stops. A keycode can carry modifiers of its own, so one key press binding covers everything from a bare letter to a full shortcut.",
+    "narration": "Presses {0}.",
+    "example": {
+      "binding": "&kp A",
+      "meaning": "Types a, or A while Shift is held."
+    },
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/key-press",
+    "seeAlso": [
+      "keycode",
+      "modifier"
+    ]
+  },
+  {
+    "term": "&mt",
+    "title": "Mod-tap",
+    "section": "behavior",
+    "summary": "Hold it for a modifier, tap it for a key.",
+    "detail": "Two jobs on one key. Held past the tapping term it becomes the modifier in the first slot; released before then it sends the key in the second. This is how home-row mods are built — the A key is also Control, without costing a key of its own. It is a hold-tap with the modifier already wired in, so it takes the same timing properties.",
+    "narration": "Hold for {0}, tap for {1}.",
+    "example": {
+      "binding": "&mt LSHFT A",
+      "meaning": "Hold for Left Shift, tap for a."
+    },
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/mod-tap",
+    "seeAlso": [
+      "hold-tap",
+      "tapping-term-ms",
+      "flavor"
+    ]
+  },
+  {
+    "term": "&lt",
+    "title": "Layer-tap",
+    "section": "behavior",
+    "summary": "Hold it to reach another layer, tap it for a key.",
+    "detail": "The same trick as a mod-tap, but the held half switches layers instead of holding a modifier. Held, the layer in the first slot is active for as long as you keep the key down; tapped, the key in the second slot is sent. Thumb keys are the usual home for these: a space bar that is also the way to your symbols.",
+    "narration": "Hold for {0}, tap for {1}.",
+    "example": {
+      "binding": "&lt 2 SPACE",
+      "meaning": "Hold to reach layer 2, tap for Space."
+    },
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/layers",
+    "seeAlso": [
+      "layer",
+      "hold-tap",
+      "&mo"
+    ]
+  },
+  {
+    "term": "&mo",
+    "title": "Momentary layer",
+    "section": "behavior",
+    "summary": "Turns a layer on for exactly as long as you hold the key.",
+    "detail": "The simplest way to reach a layer. While the key is down the layer is active and its bindings take over; let go and you are back where you were. Nothing is remembered between presses, which is what makes it safe — you can never be stranded on a layer you cannot see.",
+    "narration": "While held, switches to {0}.",
+    "example": {
+      "binding": "&mo 1",
+      "meaning": "Layer 1 is active while this key is held."
+    },
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/layers",
+    "seeAlso": [
+      "layer",
+      "&tog",
+      "&lt"
+    ]
+  },
+  {
+    "term": "&tog",
+    "title": "Toggle layer",
+    "section": "behavior",
+    "summary": "Switches a layer on and leaves it on until the key is pressed again.",
+    "detail": "Unlike a momentary layer this one latches. Press once and the layer stays active with no key held; press again and it goes away. Useful for a gaming or numpad layer you want to stay in, and worth pairing with a way back — a toggle whose own layer does not bind a way to turn it off will strand you.",
+    "narration": "Switches {0} on, or off again if it is already on.",
+    "example": {
+      "binding": "&tog 3",
+      "meaning": "Turns layer 3 on, or off if it was already on."
+    },
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/layers",
+    "seeAlso": [
+      "layer",
+      "&mo"
+    ]
+  },
+  {
+    "term": "&sk",
+    "title": "Sticky key",
+    "section": "behavior",
+    "summary": "Applies a modifier to the next key you press, then releases itself.",
+    "detail": "Tap it and the modifier waits; press any key and the modifier applies to that one key and then lets go. It means a capital letter costs two taps rather than a chord, which matters if holding two keys at once is uncomfortable. If nothing is pressed it gives up on its own after the release-after time.",
+    "narration": "Applies {0} to the next key you press.",
+    "example": {
+      "binding": "&sk LSHFT",
+      "meaning": "The next key you press is shifted."
+    },
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/sticky-key",
+    "seeAlso": [
+      "sticky-key",
+      "release-after-ms",
+      "&sl"
+    ]
+  },
+  {
+    "term": "&sl",
+    "title": "Sticky layer",
+    "section": "behavior",
+    "summary": "Uses another layer for the next key you press, then drops back.",
+    "detail": "A sticky key for layers. Tap it, press one key, and that key comes from the layer named here; everything after it is back to normal. Good for a symbol you reach for occasionally without wanting to hold a thumb key down for it.",
+    "narration": "Uses {0} for the next key you press only.",
+    "example": {
+      "binding": "&sl 2",
+      "meaning": "The next key pressed comes from layer 2."
+    },
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/sticky-layer",
+    "seeAlso": [
+      "layer",
+      "&sk"
+    ]
+  },
+  {
+    "term": "&trans",
+    "title": "Transparent",
+    "section": "behavior",
+    "summary": "Passes the key through to whatever the layer underneath binds.",
+    "detail": "Not an empty key — a see-through one. When a layer is active, a transparent position defers to the next layer down that has something at it, ending at the base layer. This is what lets a symbol layer redefine ten keys and leave the other forty alone, and it is why most positions on most upper layers are transparent.",
+    "narration": "Falls through to the layer underneath.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/misc",
+    "seeAlso": [
+      "&none",
+      "layer"
+    ]
+  },
+  {
+    "term": "&none",
+    "title": "None",
+    "section": "behavior",
+    "summary": "The key does nothing at all on this layer.",
+    "detail": "The opposite of transparent. Where a transparent key hands the press down to the layer below, this one swallows it — nothing happens, and no lower layer gets a chance. Use it to deliberately deaden a position on a layer where a fall-through would fire something you did not want.",
+    "narration": "Does nothing.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/misc",
+    "seeAlso": [
+      "&trans"
+    ]
+  },
+  {
+    "term": "&bt",
+    "title": "Bluetooth",
+    "section": "behavior",
+    "summary": "Manages the keyboard's Bluetooth profiles — which device it talks to.",
+    "detail": "A wireless keyboard keeps several profiles, each remembering one paired host, and this behavior is how you move between them and clear them out. Selecting a profile switches which computer your typing goes to; clearing one forgets the pairing so the slot can be used for something else. Pairing trouble is almost always fixed by clearing the profile on both sides and starting again.",
+    "narration": "Bluetooth — {0}",
+    "example": {
+      "binding": "&bt BT_SEL 0",
+      "meaning": "Switch to the first paired device."
+    },
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/bluetooth",
+    "seeAlso": [
+      "&out"
+    ]
+  },
+  {
+    "term": "&out",
+    "title": "Output selection",
+    "section": "behavior",
+    "summary": "Chooses whether typing goes out over USB or Bluetooth.",
+    "detail": "A keyboard plugged in over USB while also paired over Bluetooth has to be told which one to use; plugging the cable in does not decide it. This behavior picks, or toggles between them. If a wired keyboard seems dead, this is the first thing to check.",
+    "narration": "Output — {0}",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/outputs",
+    "seeAlso": [
+      "&bt"
+    ]
+  },
+  {
+    "term": "&rgb_ug",
+    "title": "RGB underglow",
+    "section": "behavior",
+    "summary": "Controls the underglow LEDs — power, colour and brightness.",
+    "detail": "Only does anything on a board that has the LEDs fitted and underglow enabled in its configuration; on a board without them the binding is harmless but silent. Note that leaving underglow on costs a great deal of battery on a wireless build.",
+    "narration": "Underglow — {0}",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/underglow"
+  },
+  {
+    "term": "&ext_power",
+    "title": "External power",
+    "section": "behavior",
+    "summary": "Cuts or restores power to the board's external hardware.",
+    "detail": "Displays, LEDs and other add-on hardware sit behind a power switch the firmware can throw. Turning it off is the single biggest saving available on a wireless board that is draining faster than you would like.",
+    "narration": "External power — {0}",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/power"
+  },
+  {
+    "term": "&reset",
+    "title": "Reset",
+    "section": "behavior",
+    "summary": "Restarts the keyboard, as if it had been unplugged and plugged back in.",
+    "detail": "A plain reboot. The firmware and the keymap are unchanged; anything held in memory is not. Harmless, and occasionally the quickest answer to a half that has stopped talking to its other half.",
+    "narration": "Restarts the keyboard.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/reset",
+    "seeAlso": [
+      "&bootloader"
+    ]
+  },
+  {
+    "term": "&bootloader",
+    "title": "Bootloader",
+    "section": "behavior",
+    "summary": "Restarts into the bootloader so new firmware can be copied on.",
+    "detail": "The board reappears on your computer as a small USB disk, and dropping a firmware file onto it flashes and reboots. This is the binding that saves you fishing for a reset button inside the case — worth putting somewhere on an upper layer where it cannot be hit by accident.",
+    "narration": "Restarts into the bootloader, ready for new firmware.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/reset",
+    "seeAlso": [
+      "&reset"
+    ]
+  },
+  {
+    "term": "hold-tap",
+    "title": "Hold-tap",
+    "section": "kind",
+    "summary": "The machinery behind every key that does one thing tapped and another held.",
+    "detail": "A hold-tap wraps two other behaviors and decides between them by how long you held the key and what you pressed in the meantime. Mod-tap and layer-tap are just hold-taps with one half fixed; defining your own lets you combine any two behaviors, which is how home-row mods with per-hand exceptions are built. Almost all of the tuning people do to a keymap is tuning these: the flavor decides how the choice is made, and the timing properties decide when.",
+    "example": {
+      "binding": "bindings = <&kp>, <&mo>;",
+      "meaning": "Tap sends a keycode, hold turns on a layer."
+    },
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/hold-tap",
+    "seeAlso": [
+      "flavor",
+      "tapping-term-ms",
+      "&mt",
+      "&lt"
+    ]
+  },
+  {
+    "term": "tap-dance",
+    "title": "Tap dance",
+    "section": "kind",
+    "summary": "One key that does something different depending on how many times you tap it.",
+    "detail": "Each binding in the list is one more tap: tap once for the first, twice for the second, and so on. The key waits for the tapping term after each tap to see whether another is coming, which means a tap dance always feels slightly slower than a plain key — put them where a small delay does not matter.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/tap-dance",
+    "seeAlso": [
+      "tapping-term-ms",
+      "hold-tap"
+    ]
+  },
+  {
+    "term": "mod-morph",
+    "title": "Mod-morph",
+    "section": "kind",
+    "summary": "One key that changes what it sends when a chosen modifier is held.",
+    "detail": "Two bindings and a set of modifiers to watch. Press the key alone and the first fires; press it while one of those modifiers is down and the second does instead. The classic use is a backspace that becomes delete under Shift, or a full stop that becomes a colon — an extra key's worth of function without an extra key.",
+    "example": {
+      "binding": "mods = <(MOD_LSFT|MOD_RSFT)>;",
+      "meaning": "Either Shift key triggers the second binding."
+    },
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/mod-morph",
+    "seeAlso": [
+      "mods",
+      "keep-mods"
+    ]
+  },
+  {
+    "term": "sticky-key",
+    "title": "Sticky key",
+    "section": "kind",
+    "summary": "Defines your own sticky behavior — one that waits for the next key press.",
+    "detail": "The kind behind &sk and &sl. Defining one yourself is how you change how long it waits, whether it survives being pressed alongside other modifiers, or what exactly it makes sticky — the wrapped binding does not have to be a modifier.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/sticky-key",
+    "seeAlso": [
+      "&sk",
+      "release-after-ms",
+      "lazy"
+    ]
+  },
+  {
+    "term": "macro",
+    "title": "Macro",
+    "section": "kind",
+    "summary": "A recorded sequence of presses and releases that one key plays back.",
+    "detail": "A macro is a list of steps run in order: send this, wait, press that, let go. Anything you can bind you can put in a macro, including layer switches, so they are the usual way to build something the stock behaviors do not cover. Note that a macro types at the keyboard's own speed, which is faster than some applications expect — a wait step is often what fixes a macro that drops characters.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/macros",
+    "seeAlso": [
+      "binding"
+    ]
+  },
+  {
+    "term": "caps-word",
+    "title": "Caps word",
+    "section": "kind",
+    "summary": "Capitalises the current word, then turns itself off at the end of it.",
+    "detail": "Caps Lock that knows when to stop. It shifts what you type until you press something that is not part of a word — a space or a full stop — and then releases. The continue-list is what decides which keys count as still being in the word, which is why underscore and backspace are usually on it: SCREAMING_SNAKE_CASE would otherwise end at the first underscore.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/caps-word",
+    "seeAlso": [
+      "continue-list"
+    ]
+  },
+  {
+    "term": "key-repeat",
+    "title": "Key repeat",
+    "section": "kind",
+    "summary": "Sends whatever you last pressed, again.",
+    "detail": "Has no key of its own to send — it repeats the previous one. Handy on a layout where a letter you type in pairs is awkward to reach twice. The usage-pages property is what restricts which sorts of key it will repeat, so that it does not repeat a volume key or a Bluetooth command.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/key-repeat",
+    "seeAlso": [
+      "usage-pages"
+    ]
+  },
+  {
+    "term": "flavor",
+    "title": "Flavor",
+    "section": "property",
+    "summary": "How a hold-tap decides between its hold and its tap.",
+    "detail": "The single most consequential setting on a hold-tap, and the first thing to change when home-row mods misfire. It decides whether pressing another key while this one is down counts as evidence that you meant to hold, or evidence that you meant to type. If modifiers keep firing while you type quickly, move towards tap-preferred; if holds feel sluggish to register, move towards hold-preferred.",
+    "values": [
+      {
+        "value": "tap-preferred",
+        "summary": "Only a full tapping term of holding counts as a hold. Pressing another key first sends the tap. Most forgiving while typing fast.",
+        "clause": "tap-preferred, so another key pressed first makes it a tap"
+      },
+      {
+        "value": "balanced",
+        "summary": "Holding out the term counts as a hold, and so does pressing and releasing another key while this one is down. The usual starting point.",
+        "clause": "balanced, so another key pressed and released makes it a hold"
+      },
+      {
+        "value": "hold-preferred",
+        "summary": "Pressing any other key while this one is down makes it a hold immediately. Fastest to trigger, and the most likely to fire when you did not mean it.",
+        "clause": "hold-preferred, so any other key press makes it a hold at once"
+      },
+      {
+        "value": "tap-unless-interrupted",
+        "summary": "A tap unless another key is pressed and released within the term. Rarely what you want unless you already know you want it.",
+        "clause": "a tap unless another key is pressed and released first"
+      }
+    ],
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/hold-tap",
+    "seeAlso": [
+      "hold-tap",
+      "tapping-term-ms"
+    ]
+  },
+  {
+    "term": "tapping-term-ms",
+    "title": "Tapping term",
+    "section": "property",
+    "clause": "holds after {value} ms",
+    "summary": "How long the key must be held before it counts as a hold rather than a tap.",
+    "detail": "Measured in milliseconds from the press. ZMK's default is 200. Lower it and holds register sooner but stray ones creep in while typing; raise it and holds are deliberate but feel laggy. Somewhere between 150 and 250 suits most people, and it is worth changing in steps of about 20 rather than doubling.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/hold-tap",
+    "seeAlso": [
+      "flavor",
+      "quick-tap-ms"
+    ]
+  },
+  {
+    "term": "quick-tap-ms",
+    "title": "Quick tap",
+    "section": "property",
+    "clause": "tap then hold again within {value} ms to repeat the tap",
+    "summary": "Tap then immediately hold the same key, and you get the tap held down.",
+    "detail": "Within this window of the previous tap, holding the key repeats the tap instead of triggering the hold. That is what makes a held backspace on a mod-tap delete a whole line rather than turning into a modifier. ZMK's default is 175 milliseconds.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/hold-tap",
+    "seeAlso": [
+      "tapping-term-ms"
+    ]
+  },
+  {
+    "term": "require-prior-idle-ms",
+    "title": "Require prior idle",
+    "section": "property",
+    "clause": "never holds within {value} ms of the previous key",
+    "summary": "Refuses to hold if you were typing until a moment ago.",
+    "detail": "If another key was pressed within this many milliseconds, this one can only tap. It is the sharpest tool against accidental home-row mods, because it targets exactly the case that causes them — mid-word, at speed. A value near 125 to 150 milliseconds stops most misfires without getting in the way of a deliberate hold.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/hold-tap",
+    "seeAlso": [
+      "flavor",
+      "tapping-term-ms"
+    ]
+  },
+  {
+    "term": "release-after-ms",
+    "title": "Release after",
+    "section": "property",
+    "clause": "gives up after {value} ms if nothing follows",
+    "summary": "How long a sticky key waits for the next press before giving up.",
+    "detail": "Measured from when the sticky key was tapped; ZMK's default is 1000 milliseconds. If nothing is pressed in that time the modifier releases itself, so a stray tap does not leave Shift silently armed. Raise it if you find sticky keys expiring before you have reached the key you wanted.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/sticky-key",
+    "seeAlso": [
+      "sticky-key",
+      "&sk"
+    ]
+  },
+  {
+    "term": "hold-trigger-key-positions",
+    "title": "Hold trigger key positions",
+    "section": "property",
+    "clause": "only holds for keys at {value}",
+    "summary": "Only these keys can turn this one into a hold.",
+    "detail": "A list of key positions. Press one of them while this key is down and the hold triggers; press anything else and you get the tap. This is how per-hand home-row mods are made: list only the positions on the opposite half, and a modifier can never fire from a roll on its own hand. The single most effective fix for misfiring home-row mods after the flavor.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/hold-tap",
+    "seeAlso": [
+      "position",
+      "hold-trigger-on-release",
+      "flavor"
+    ]
+  },
+  {
+    "term": "hold-trigger-on-release",
+    "title": "Hold trigger on release",
+    "section": "property",
+    "clause": "waits for the other key's release before deciding, so mods can chord",
+    "summary": "Waits for the other key to be released before deciding.",
+    "detail": "Used with hold-trigger-key-positions. Without it, a second modifier pressed while the first is down is judged as soon as it goes down; with it, the decision waits for release. That is what lets you chord two home-row mods together — without it the second one is read as an ordinary key and cancels the first.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/hold-tap",
+    "seeAlso": [
+      "hold-trigger-key-positions"
+    ]
+  },
+  {
+    "term": "hold-while-undecided",
+    "title": "Hold while undecided",
+    "section": "property",
+    "clause": "presses the modifier immediately, before deciding",
+    "summary": "Presses the modifier straight away, before deciding it was a hold.",
+    "detail": "Normally a hold-tap sends nothing until it has made up its mind. With this the modifier goes down at once and is taken back if the key turns out to be a tap. It makes modifier-plus-click work with a mouse, which otherwise cannot be done because the click never reaches the keyboard to break the tie.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/hold-tap",
+    "seeAlso": [
+      "hold-while-undecided-linger"
+    ]
+  },
+  {
+    "term": "hold-while-undecided-linger",
+    "title": "Hold while undecided linger",
+    "section": "property",
+    "clause": "keeps that early modifier down until the tap has been sent",
+    "summary": "Keeps the early modifier held until the tap has been sent.",
+    "detail": "An adjustment to hold-while-undecided: rather than releasing the modifier the moment the key is judged a tap, it stays down until the tapped keycode has gone out and is released after. It exists for applications that get confused by the modifier disappearing a fraction before the key arrives.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/hold-tap",
+    "seeAlso": [
+      "hold-while-undecided"
+    ]
+  },
+  {
+    "term": "retro-tap",
+    "title": "Retro tap",
+    "section": "property",
+    "clause": "sends the tap even if you held it and pressed nothing",
+    "summary": "If you held the key but pressed nothing else, send the tap anyway.",
+    "detail": "Without this, holding a mod-tap and releasing it without pressing anything does nothing at all. With it, the tap is sent on release. Forgiving of a hesitant press, but it means a modifier you held and thought better of will still type its letter.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/hold-tap",
+    "seeAlso": [
+      "tapping-term-ms"
+    ]
+  },
+  {
+    "term": "quick-release",
+    "title": "Quick release",
+    "section": "property",
+    "clause": "releases as the next key goes down rather than as it comes up",
+    "summary": "A sticky key lets go as soon as the next key goes down, not when it comes up.",
+    "detail": "Changes when the held modifier is released by a hair, which matters when two sticky keys are used one after the other or when an application samples modifiers on key-down. Try it if a sticky modifier is bleeding onto the key after the one you meant.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/sticky-key",
+    "seeAlso": [
+      "sticky-key"
+    ]
+  },
+  {
+    "term": "lazy",
+    "title": "Lazy",
+    "section": "property",
+    "clause": "the modifier only appears alongside the key it applies to",
+    "summary": "Holds the modifier back until the next key is actually pressed.",
+    "detail": "A lazy sticky key does not tell the computer anything when tapped — the modifier only appears alongside the key it applies to. This stops applications that react to a bare modifier press, such as the ones that open a menu when Alt is tapped, from firing every time you use a sticky key.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/sticky-key",
+    "seeAlso": [
+      "sticky-key"
+    ]
+  },
+  {
+    "term": "ignore-modifiers",
+    "title": "Ignore modifiers",
+    "section": "property",
+    "clause": "other modifiers do not cancel it, so stickies stack",
+    "summary": "Stops a sticky key from cancelling when another modifier is pressed.",
+    "detail": "On by default in ZMK, and what lets sticky modifiers stack: tap sticky Control, tap sticky Shift, then press a key and get both. Turning it off makes a second modifier end the first, which is almost never what anyone wants.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/sticky-key",
+    "seeAlso": [
+      "sticky-key"
+    ]
+  },
+  {
+    "term": "mods",
+    "title": "Mods",
+    "section": "property",
+    "clause": "triggered by {value}",
+    "summary": "Which held modifiers make a mod-morph fire its second binding.",
+    "detail": "Written as MOD_ names joined by vertical bars, because it is a bit mask rather than a list — MOD_LSFT|MOD_RSFT means either Shift. The editor keeps this as text rather than picking it apart, since the names are preprocessor tokens it cannot resolve to values.",
+    "example": {
+      "binding": "mods = <(MOD_LSFT|MOD_RSFT)>;",
+      "meaning": "Either Shift key triggers the morph."
+    },
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/mod-morph",
+    "seeAlso": [
+      "mod-morph",
+      "keep-mods"
+    ]
+  },
+  {
+    "term": "keep-mods",
+    "title": "Keep mods",
+    "section": "property",
+    "clause": "keeps {value} applied afterwards",
+    "summary": "Which of the triggering modifiers stay held once the morph fires.",
+    "detail": "By default a mod-morph strips the modifier that triggered it, so a Shift-morphed key does not arrive shifted as well. List a modifier here to keep it applied — needed when the second binding is itself meant to be a shifted keycode.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/mod-morph",
+    "seeAlso": [
+      "mods",
+      "mod-morph"
+    ]
+  },
+  {
+    "term": "continue-list",
+    "title": "Continue list",
+    "section": "property",
+    "clause": "{value} do not end the word",
+    "summary": "The keys that do not end a caps word.",
+    "detail": "Caps word switches itself off at the first key that is not part of a word. This list is the exception: keycodes named here are treated as still being inside the word. Underscore and backspace are the usual entries — without underscore, typing a constant name in capitals stops halfway through.",
+    "example": {
+      "binding": "continue-list = <UNDERSCORE BACKSPACE>;",
+      "meaning": "Neither key ends the capitalised word."
+    },
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/caps-word",
+    "seeAlso": [
+      "caps-word"
+    ]
+  },
+  {
+    "term": "usage-pages",
+    "title": "Usage pages",
+    "section": "property",
+    "clause": "only repeats keys from {value}",
+    "summary": "Which sorts of key a key-repeat behavior is willing to repeat.",
+    "detail": "HID sorts keys into pages — ordinary keyboard keys on one, media and volume controls on another. Naming a page here restricts repeating to keys from it, so that a repeat key pressed after a volume change does not change the volume again.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/key-repeat",
+    "seeAlso": [
+      "key-repeat"
+    ]
+  },
+  {
+    "term": "wait-ms",
+    "title": "Wait",
+    "section": "property",
+    "clause": "waits {value} ms between steps",
+    "summary": "How long a macro pauses between one step and the next.",
+    "detail": "A macro plays back far faster than a person types, and some applications drop keys that arrive that quickly — terminals and remote desktops especially. Raising this is the usual fix for a macro that works sometimes. ZMK's default is 100 milliseconds, and a macro can change it partway through so only the fragile steps are slowed down.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/macros",
+    "seeAlso": [
+      "macro",
+      "tap-ms"
+    ]
+  },
+  {
+    "term": "tap-ms",
+    "title": "Tap time",
+    "section": "property",
+    "clause": "holds each key for {value} ms",
+    "summary": "How long a macro holds each key down before releasing it.",
+    "detail": "The other half of macro timing: wait-ms is the gap between steps, this is the length of the press itself. ZMK's default is 100 milliseconds. An application that misses keys despite a generous wait is usually watching for a longer press than the macro is giving it.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/macros",
+    "seeAlso": [
+      "macro",
+      "wait-ms"
+    ]
+  },
+  {
+    "term": "keymap",
+    "title": "Keymap",
+    "section": "concept",
+    "summary": "The file that says what every key on your keyboard does.",
+    "detail": "A ZMK keymap is a devicetree file — the same format Linux uses to describe hardware — listing your layers, the behaviors you have defined, your combos and your macros. This editor changes only the spans it means to change and leaves your comments, includes and formatting exactly as you wrote them.",
+    "documentation": "https://zmk.dev/docs/keymaps",
+    "seeAlso": [
+      "layer",
+      "binding"
+    ]
+  },
+  {
+    "term": "layer",
+    "title": "Layer",
+    "section": "concept",
+    "summary": "One complete set of bindings, stacked over the others.",
+    "detail": "Every layer covers every key position. Layers are numbered from zero, and the highest active one wins at any position that binds something — the rest fall through, which is what transparent bindings are for. A small keyboard works by having few keys and many layers, so the number key you cannot see is a thumb hold away rather than absent.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors/layers",
+    "seeAlso": [
+      "&mo",
+      "&lt",
+      "&trans"
+    ]
+  },
+  {
+    "term": "binding",
+    "title": "Binding",
+    "section": "concept",
+    "summary": "One behavior plus its parameters — what a single key position does.",
+    "detail": "Written as an ampersand, the behavior's name, and however many parameters that behavior takes. The ampersand is devicetree's way of pointing at something defined elsewhere, which is why every binding starts with one, and why your own behaviors are referred to the same way as ZMK's.",
+    "example": {
+      "binding": "&mt LCTRL ESC",
+      "meaning": "One behavior, two parameters, one key."
+    },
+    "seeAlso": [
+      "behavior",
+      "keycode"
+    ]
+  },
+  {
+    "term": "behavior",
+    "title": "Behavior",
+    "section": "concept",
+    "summary": "A thing a key can do, which bindings then use with different parameters.",
+    "detail": "ZMK ships a set of them — key press, layer tap, sticky key and the rest — and a keymap can define its own from a handful of kinds. Defining one is how you get a hold-tap tuned your way and then use it on twenty keys, rather than repeating the same settings twenty times.",
+    "documentation": "https://zmk.dev/docs/keymaps/behaviors",
+    "seeAlso": [
+      "hold-tap",
+      "binding"
+    ]
+  },
+  {
+    "term": "combo",
+    "title": "Combo",
+    "section": "concept",
+    "summary": "Pressing two or more keys together to trigger something else.",
+    "detail": "A combo names key positions rather than the keys bound at them, so it follows the physical layout rather than the letters. Press them together within the combo's timeout and its binding fires instead of the keys themselves. The usual way to reach an escape or a bracket without spending a key on it, though combos on keys you roll through while typing will fire when you did not mean them to.",
+    "documentation": "https://zmk.dev/docs/keymaps/combos",
+    "seeAlso": [
+      "position",
+      "layer"
+    ]
+  },
+  {
+    "term": "keycode",
+    "title": "Keycode",
+    "section": "concept",
+    "summary": "The name of a key as the computer knows it — A, SPACE, C_VOL_UP.",
+    "detail": "Keycodes come from the USB HID standard, which is why some have unlovely names and why a few work on one operating system and not another. Most have both a long and a short spelling, and the two are interchangeable. A keycode can be wrapped in a modifier function to make a shortcut out of it.",
+    "documentation": "https://zmk.dev/docs/keymaps/list-of-keycodes",
+    "seeAlso": [
+      "modifier",
+      "&kp"
+    ]
+  },
+  {
+    "term": "modifier",
+    "title": "Modifier function",
+    "section": "concept",
+    "summary": "A wrapper that adds Shift, Control, Option or Command to a keycode.",
+    "detail": "Written as a function around the keycode — LS for Shift, LC for Control, LA for Option, LG for Command, with R spellings for the right-hand versions. They nest, so a shortcut needing several modifiers is several wrappers deep. This is different from binding a modifier as a key of its own: a wrapped keycode always arrives with the modifier applied.",
+    "example": {
+      "binding": "&kp LG(LS(N4))",
+      "meaning": "Command + Shift + 4."
+    },
+    "documentation": "https://zmk.dev/docs/keymaps/modifiers",
+    "seeAlso": [
+      "keycode",
+      "&mt"
+    ]
+  },
+  {
+    "term": "position",
+    "title": "Key position",
+    "section": "concept",
+    "summary": "A key's number in the keymap, counted in the order the bindings are listed.",
+    "detail": "Positions start at zero and run in the order the layout defines, usually left to right and top to bottom, with a split keyboard's halves running on from one another. Combos and hold-trigger key positions are written in these numbers, which is why they do not change when you rebind a key — the position is the socket, not what is plugged into it.",
+    "seeAlso": [
+      "combo",
+      "hold-trigger-key-positions"
+    ]
+  }
+]

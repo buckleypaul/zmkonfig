@@ -54,6 +54,10 @@ final class AppModel {
     /// how it is derived; this is only where the current one is kept.
     private(set) var behaviorIndex: BehaviorIndex = .empty
     var availableBehaviors: [ZMKBehavior] { behaviorIndex.all }
+    /// The prose behind the jargon: what `&kp`, `flavor` and `hold-tap` mean.
+    /// Every explanation in the UI comes from here, so none of them can drift
+    /// into wording it differently.
+    private(set) var glossary: Glossary = .empty
     private(set) var catalog: [CatalogEntry] = []
     private(set) var isLoadingCatalog = false
 
@@ -196,6 +200,43 @@ final class AppModel {
         behaviorIndex.isDocumented(code)
     }
 
+    /// The term explaining a bound behavior — see
+    /// ``Glossary/term(forBehavior:in:)``, which owns the fall-through to the
+    /// kind that a keymap's own behaviors rely on. This is what the help badge
+    /// opens; the line printed under the picker is ``explanation(ofBehavior:)``.
+    func glossaryTerm(forBehavior code: String) -> String? {
+        glossary.term(forBehavior: code, in: keymap)
+    }
+
+    /// The line shown under the behavior picker — see
+    /// ``Glossary/explanation(forBehavior:in:)``, which owns the choice between
+    /// a stored summary, a saved note and a derived sentence.
+    func explanation(ofBehavior code: String) -> String? {
+        glossary.explanation(forBehavior: code, in: keymap)
+    }
+
+    /// What a binding does, in a sentence, or nil for a behavior the glossary
+    /// has nothing to say about. Views draw nothing rather than a placeholder;
+    /// see ``BindingNarrator/sentence(for:behavior:layers:glossary:)``.
+    func narration(of binding: KeyBinding) -> String? {
+        BindingNarrator.sentence(
+            for: binding,
+            behavior: behavior(for: binding.behavior),
+            layers: layers,
+            glossary: glossary
+        )
+    }
+
+    /// The sentence plus the binding text under it, for a keycap's tooltip.
+    func description(of binding: KeyBinding) -> String {
+        BindingNarrator.keyDescription(
+            for: binding,
+            behavior: behavior(for: binding.behavior),
+            layers: layers,
+            glossary: glossary
+        )
+    }
+
     /// The 15 stock behaviors are only half the story: this keymap defines
     /// eight hold-taps of its own (`&hml`, `&hmr`, `&qt`, …) that metadata
     /// knows nothing about. ``BehaviorIndex`` reads them out of the parsed
@@ -266,10 +307,15 @@ final class AppModel {
     private func loadMetadata() async {
         do {
             let loaded = try await Task.detached {
-                (behaviors: try AppResources.loadBehaviors(), keycodes: try AppResources.loadKeycodes())
+                (
+                    behaviors: try AppResources.loadBehaviors(),
+                    keycodes: try AppResources.loadKeycodes(),
+                    glossary: try AppResources.loadGlossary()
+                )
             }.value
             stockBehaviors = loaded.behaviors
             keycodes = loaded.keycodes
+            glossary = loaded.glossary
             rebuildBehaviorIndex()
         } catch let failure {
             // `catch error` would shadow the `error` property this assigns to.

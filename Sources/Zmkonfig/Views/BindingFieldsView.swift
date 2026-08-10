@@ -22,6 +22,7 @@ struct BindingFieldsView: View {
         VStack(alignment: .leading, spacing: theme.metric(.spacingL)) {
             behaviorPicker
             slots
+            narration
             if showsTransparentAndNone { quickActions }
         }
         .sheet(item: $keycodePickerSlot) { slot in
@@ -35,8 +36,16 @@ struct BindingFieldsView: View {
 
     // MARK: - Sections
 
+    /// The behavior row carries the whole explanation: what this kind of
+    /// behavior is, in a line, always visible. Falling back to the behavior's
+    /// *kind* is what makes it appear for `&hml` and the rest of a keymap's own
+    /// behaviors, which is most of what a real keymap binds.
     private var behaviorPicker: some View {
-        FieldRow(label: "Behavior") {
+        FieldRow(
+            label: "Behavior",
+            term: model.glossaryTerm(forBehavior: binding.behavior),
+            summary: model.explanation(ofBehavior: binding.behavior)
+        ) {
             Picker("Behavior", selection: behaviorSelection) {
                 ForEach(model.availableBehaviors) { behavior in
                     Text("\(behavior.name)  \(behavior.code)").tag(behavior.code)
@@ -44,6 +53,21 @@ struct BindingFieldsView: View {
             }
             .labelsHidden()
             .pickerStyle(.menu)
+        }
+    }
+
+    /// What this binding does, in a sentence. Under the slots rather than the
+    /// picker, because it can only be written once the parameters are filled in
+    /// — "Hold for Left Shift, tap for A" needs both of them.
+    @ViewBuilder
+    private var narration: some View {
+        if let sentence = model.narration(of: binding) {
+            ContentBox {
+                Text(sentence)
+                    .font(theme.font(.body))
+                    .foregroundStyle(theme.color(.primaryText))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -57,9 +81,14 @@ struct BindingFieldsView: View {
             // rather than calling them "Keycode" and "Keycode 2".
             let isHoldTap = !model.isDocumentedBehavior(binding.behavior) && kinds.count == 2
             ForEach(Array(kinds.enumerated()), id: \.offset) { slot, kind in
+                // No help badge per slot. "Hold" and "Tap" are already the
+                // plainest words available for what those slots are, and a
+                // hover on each of them explained the behavior twice over —
+                // once per slot, and only to someone who thought to hover.
+                // The behavior row above says it once, in the open.
                 FieldRow(label: isHoldTap
                          ? (slot == 0 ? "Hold" : "Tap")
-                         : BindingAlgebra.slotTitle(kind: kind, slot: slot)) {
+                         : BindingAlgebra.slotTitle(kind: kind, slot: slot, in: kinds)) {
                     slotEditor(kind: kind, slot: slot)
                 }
             }

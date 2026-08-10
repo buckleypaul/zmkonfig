@@ -46,7 +46,7 @@ struct ComboEditorView: View {
         let tokens = model.keymap?.positionTokens(of: combo) ?? []
         return Card {
             VStack(alignment: .leading, spacing: theme.metric(.spacingXS)) {
-                SectionLabel(text: "Combo")
+                SectionLabel(text: "Combo", term: "combo")
                 Text(combo.binding.text)
                     .font(theme.font(.mono))
                     .foregroundStyle(theme.color(.primaryText))
@@ -89,7 +89,7 @@ struct ComboEditorView: View {
     }
 
     private var positions: some View {
-        FieldRow(label: "Key positions") {
+        FieldRow(label: "Key positions", term: "position") {
             VStack(alignment: .leading, spacing: theme.metric(.spacingS)) {
                 if combo.keyPositions.isEmpty {
                     Caption("Click two or more keys on the board.")

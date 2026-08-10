@@ -75,7 +75,7 @@ struct InspectorPane: View {
             }
         case .behavior(let id):
             if let behavior = model.behaviors.first(where: { $0.id == id }) {
-                BehaviorEditorView(model: model, behavior: behavior)
+                BehaviorEditorView(model: model, explain: explain, behavior: behavior)
             } else {
                 BindingEditorView(model: model)
             }

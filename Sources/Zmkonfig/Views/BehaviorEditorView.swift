@@ -13,6 +13,7 @@ import ZmkonfigKit
 struct BehaviorEditorView: View {
     @Environment(\.theme) private var theme
     let model: AppModel
+    let explain: ExplainModel
     let behavior: KeymapBehavior
 
     @State private var isConfirmingDelete = false
@@ -22,6 +23,7 @@ struct BehaviorEditorView: View {
             VStack(alignment: .leading, spacing: theme.metric(.spacingL)) {
                 summary
                 problems
+                description
                 kindPicker
                 names
                 bindings
@@ -35,6 +37,14 @@ struct BehaviorEditorView: View {
 
     // MARK: - Sections
 
+    /// The node in English.
+    ///
+    /// `AssistantTools.summary` used to be what this drew, and it is the wrong
+    /// register: `flavor "balanced", tapping-term-ms 200, quick-tap-ms 175` is
+    /// the node's properties transcribed, which the fields below already show,
+    /// and it tells someone who does not know what `quick-tap-ms` is exactly
+    /// nothing. That summary exists to be read by the model, where terseness is
+    /// the point. Here the sentence is the point.
     private var summary: some View {
         Card {
             VStack(alignment: .leading, spacing: theme.metric(.spacingXS)) {
@@ -43,7 +53,7 @@ struct BehaviorEditorView: View {
                     .font(theme.font(.mono))
                     .foregroundStyle(theme.color(.primaryText))
                     .textSelection(.enabled)
-                Caption(AssistantTools.summary(of: behavior))
+                Caption(BehaviorNarrator.description(of: behavior, glossary: model.glossary))
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -56,8 +66,91 @@ struct BehaviorEditorView: View {
         }
     }
 
+    /// What the behavior is *for*, saved into the keymap as a
+    /// ``BehaviorNote``.
+    ///
+    /// The card above says what the node does, derived from the node and always
+    /// current. This is the part that cannot be derived from anything — why it
+    /// exists, what its timings are tuned against, which hand it serves — so it
+    /// is written down once, in the file, and travels with it.
+    private var description: some View {
+        FieldRow(label: "Description") {
+            VStack(alignment: .leading, spacing: theme.metric(.spacingS)) {
+                TextField("What is this behavior for?", text: Binding(
+                    get: { behavior.note ?? "" },
+                    set: { text in
+                        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                        model.updateBehavior(with { $0.note = trimmed.isEmpty ? nil : text })
+                    }
+                ), axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(2...6)
+                .font(theme.font(.body))
+
+                Caption(
+                    "Saved in the keymap as a `/* \(BehaviorNote.marker) … */` comment, and "
+                        + "shown wherever `&\(behavior.label)` is bound.",
+                    tone: .tertiaryText
+                )
+                .fixedSize(horizontal: false, vertical: true)
+
+                draft
+            }
+        }
+        // A description is about one behavior and only that one, so a draft
+        // does not follow the selection to the next.
+        .onChange(of: behavior.id) { _, _ in explain.behavior.clear() }
+    }
+
+    /// Claude's draft, and the button that puts it in the field.
+    ///
+    /// Nothing here writes to the keymap. The draft is copied into the text
+    /// field by the user, and saving it takes the same path a typed one does —
+    /// which is what keeps "model output reaches the file" a thing the user
+    /// does deliberately rather than something that happens.
+    @ViewBuilder
+    private var draft: some View {
+        let subject = ExplainModel.behaviorSubject(behavior.label)
+        let answer = explain.behavior.text(for: subject)
+
+        VStack(alignment: .leading, spacing: theme.metric(.spacingS)) {
+            HStack(spacing: theme.metric(.spacingS)) {
+                Button(answer == nil ? "Draft with Claude" : "Again") {
+                    explain.describeBehavior(behavior, context: model.context)
+                }
+                .disabled(explain.behavior.isRunning || !explain.behavior.isConfigured)
+
+                if let answer {
+                    Button("Use this") {
+                        model.updateBehavior(with { $0.note = answer })
+                        explain.behavior.clear()
+                    }
+                    Button("Discard") { explain.behavior.clear() }
+                }
+                Spacer(minLength: 0)
+            }
+            .font(theme.font(.caption))
+
+            if !explain.behavior.isConfigured {
+                Caption("Add an API key in Settings to draft one.", tone: .tertiaryText)
+            }
+
+            ClaudeAnswer(
+                request: explain.behavior,
+                subject: subject,
+                working: "Reading the keymap…"
+            )
+        }
+    }
+
     private var kindPicker: some View {
-        FieldRow(label: "Kind") {
+        // The kind's own summary here, not this node's description: the rest of
+        // this editor *is* the node's description, field by field.
+        FieldRow(
+            label: "Kind",
+            term: behavior.kind?.glossaryTerm,
+            summary: behavior.kind.flatMap { model.glossary.summary(for: $0.glossaryTerm) }
+        ) {
             VStack(alignment: .leading, spacing: theme.metric(.spacingXS)) {
                 Picker("Kind", selection: Binding(
                     get: { behavior.compatible },
@@ -261,6 +354,11 @@ struct BehaviorEditorView: View {
             .font(theme.font(.mono))
             .help(isRequired ? "\(kindName.capitalized) requires this property" : name)
 
+            // The tooltip above used to be the whole story, and for an optional
+            // property it was the property's own name — no help at all to
+            // someone looking at `retro-tap` for the first time.
+            HelpBadge(term: name)
+
             if let current {
                 propertyValue(name, shape: shape, value: current)
             } else if isRequired {
@@ -292,19 +390,31 @@ struct BehaviorEditorView: View {
             )
 
         case .choice(let options, _):
-            Picker(name, selection: Binding(
-                get: { Self.editableText(value) },
-                set: { choice in setProperty(name, to: .string(choice)) }
-            )) {
-                ForEach(options, id: \.self) { option in
-                    Text(option).tag(option)
+            // The picker and the gloss for what is picked, stacked. `flavor` is
+            // the one property people most often change without being able to
+            // find out what the four options mean, and a footnote elsewhere is
+            // not where that gets answered.
+            VStack(alignment: .leading, spacing: theme.metric(.spacingXS)) {
+                Picker(name, selection: Binding(
+                    get: { Self.editableText(value) },
+                    set: { choice in setProperty(name, to: .string(choice)) }
+                )) {
+                    ForEach(options, id: \.self) { option in
+                        Text(option).tag(option)
+                    }
+                    // A file may already say something this table does not list.
+                    if !options.contains(Self.editableText(value)) {
+                        Text(Self.editableText(value)).tag(Self.editableText(value))
+                    }
                 }
-                // A file may already say something this table does not list.
-                if !options.contains(Self.editableText(value)) {
-                    Text(Self.editableText(value)).tag(Self.editableText(value))
+                .labelsHidden()
+
+                if let chosen = model.glossary.entry(for: name)?
+                    .values?.first(where: { $0.value == Self.editableText(value) }) {
+                    Caption(chosen.summary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .labelsHidden()
 
         case .tokens(let hint):
             tokenField(name, hint: hint, value: value, asNumbers: false)

@@ -11,6 +11,10 @@ import ZmkonfigKit
 final class ExplainModel {
     /// Describes the selected layer.
     let layer: ClaudeRequest
+    /// Describes the selected key.
+    let key: ClaudeRequest
+    /// Drafts the description of a behavior the keymap defines.
+    let behavior: ClaudeRequest
     /// Reviews the diff about to be committed.
     let changes: ClaudeRequest
 
@@ -22,6 +26,8 @@ final class ExplainModel {
 
     init(llm: LLMModel) {
         layer = ClaudeRequest(llm: llm)
+        key = ClaudeRequest(llm: llm)
+        behavior = ClaudeRequest(llm: llm)
         changes = ClaudeRequest(llm: llm)
     }
 
@@ -91,6 +97,123 @@ final class ExplainModel {
         \(KeymapDigest.layer(layer, layout: context.layout))
         """
     }
+
+    // MARK: - Keys
+
+    /// Keyed on the layer *and* the position: the same position is a different
+    /// key on every layer, and an answer about the base layer's thumb shown
+    /// over the symbol layer's would be wrong rather than merely stale.
+    static func keySubject(layerID: Int, index: Int) -> String { "key-\(layerID)-\(index)" }
+
+    /// Explains one key. The static help already says what the binding *does*;
+    /// this is for the question it cannot answer — why this key, here.
+    func explainKey(at index: Int, on layer: KeymapLayer, context: KeymapContext) {
+        let binding = layer.bindings.indices.contains(index) ? layer.bindings[index] : nil
+        key.run(
+            subject: Self.keySubject(layerID: layer.id, index: index),
+            system: Self.keySystemPrompt,
+            // Same ordering discipline as the layer prompt: the pack is
+            // identical for every key on a layer, so it goes first and the
+            // cache holds while the user clicks from key to key.
+            prompt: """
+                \(ContextPack.forLayer(layer, context: context))
+
+                ## The layer this key is on
+
+                Layer \(layer.id), "\(layer.displayName)".
+
+                \(KeymapDigest.layer(layer, layout: context.layout))
+
+                ## The key to explain
+
+                Position \(index) on layer \(layer.id), currently \
+                \(binding.map { "`\($0.text)`" } ?? "unbound").
+                """,
+            effort: .low
+        )
+    }
+
+    private static let keySystemPrompt = """
+        You are helping someone read one key of a ZMK keymap.
+
+        You are given a primer on how ZMK layers and hold-taps work, the behaviors \
+        and macros this keymap defines, every layer and every combo, then the layer \
+        the key sits on laid out as it physically sits under the hands, and finally \
+        the key itself by position.
+
+        Explain that one key. Say what it does — including what its behavior's own \
+        properties mean for how it feels to press, if it is a hold-tap or a macro the \
+        keymap defines. Then say why it is plausibly there: which finger reaches it, \
+        what the neighbouring keys are, whether it pairs with a mirrored key on the \
+        other hand, whether any combo uses its position, and what the same position \
+        does on the other layers.
+
+        Three short paragraphs at most, and fewer if the key is a plain letter that \
+        needs no explaining. Do not restate the whole layer.
+        """
+
+    // MARK: - Behaviors
+
+    /// Keyed on the label, which is what a binding writes and what the user is
+    /// looking at. Two behaviors cannot share one.
+    static func behaviorSubject(_ label: String) -> String { "behavior-\(label)" }
+
+    /// Drafts the ``BehaviorNote`` for a behavior the keymap defines.
+    ///
+    /// This one is unlike the other three: its answer is meant to be *kept*,
+    /// and the user keeps it by pressing a button that puts it in the field.
+    /// Nothing here writes anything — the draft sits in the request until it is
+    /// copied into ``KeymapBehavior/note``, and saving it goes through
+    /// `upsertBehavior` and `SourceEdit` like every other edit. What stops the
+    /// text being anything but a comment is ``BehaviorNote/sanitized(_:)``,
+    /// which runs on the way to the file whatever wrote it.
+    func describeBehavior(_ node: KeymapBehavior, context: KeymapContext) {
+        behavior.run(
+            subject: Self.behaviorSubject(node.label),
+            system: Self.behaviorSystemPrompt,
+            // Pack first for the same cache reason as the others: it is
+            // identical across every behavior in a keymap, and someone
+            // describing their behaviors describes several in a row.
+            prompt: """
+                \(ContextPack.forKeymap(context))
+
+                ## The behavior to describe
+
+                `&\(node.label)`, defined as `\(node.nodeName)`.
+
+                What its definition already says, mechanically: \
+                \(AssistantTools.summary(of: node))
+                """,
+            effort: .low
+        )
+    }
+
+    /// Deliberately narrow. The editor can already read the node back as a
+    /// sentence — `BehaviorNarrator` does exactly that, for free and offline —
+    /// so a draft that says the timings again has cost a request and added
+    /// nothing. What cannot be derived is why the node exists, and that is the
+    /// only thing worth asking for.
+    private static let behaviorSystemPrompt = """
+        You are naming the purpose of one behavior a ZMK keymap defines for itself.
+
+        You are given a primer on ZMK, every behavior and macro this keymap defines, \
+        every layer, and every combo — then one behavior to describe, with its \
+        properties transcribed.
+
+        Write the description that belongs next to that behavior's definition. Say \
+        what it is FOR and how it is meant to feel to use: which hand or which keys \
+        it serves, what its timings are tuned to avoid, how it differs from the other \
+        behaviors in the list that are the same kind. Work out its role from where it \
+        is bound.
+
+        Do not restate the property values back — the editor already shows those next \
+        to your text, and repeating them wastes the only two sentences you have.
+
+        Hard requirements. One or two sentences, under 300 characters. Plain prose: \
+        no markdown, no backticks, no bullet points, no line breaks, and no preamble \
+        such as "This behavior". Output the description and nothing else — it is \
+        saved verbatim as a comment in the user's keymap file.
+        """
 
     // MARK: - Changes
 

@@ -83,12 +83,21 @@ public enum BindingAlgebra {
     }
 
     /// What one slot is called in the editor.
-    public static func slotTitle(kind: ParamKind, slot: Int) -> String {
-        switch kind {
+    /// What to call one slot of a binding.
+    ///
+    /// Numbered by its place among the slots of *its own kind*, not by its
+    /// position in the binding. `&lt` takes a layer and then a keycode, and
+    /// numbering by position labelled that keycode "Keycode 2" — a second of
+    /// something there was only ever one of.
+    public static func slotTitle(kind: ParamKind, slot: Int, in kinds: [ParamKind]) -> String {
+        let name = switch kind {
         case .layer: "Layer"
         case .command: "Command"
         case .mod: "Modifier"
-        case .code: slot == 0 ? "Keycode" : "Keycode \(slot + 1)"
+        case .code: "Keycode"
         }
+        guard kinds.filter({ $0 == kind }).count > 1 else { return name }
+        let ordinal = kinds.prefix(slot).filter { $0 == kind }.count + 1
+        return "\(name) \(ordinal)"
     }
 }

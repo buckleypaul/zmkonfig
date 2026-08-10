@@ -27,4 +27,8 @@ enum AppResources {
     static func loadKeycodes() throws -> [ZMKKeycode] {
         try ZMKMetadata.loadKeycodes(bundle: kit ?? ZMKMetadata.resourceBundle)
     }
+
+    static func loadGlossary() throws -> Glossary {
+        try ZMKMetadata.loadGlossary(bundle: kit ?? ZMKMetadata.resourceBundle)
+    }
 }

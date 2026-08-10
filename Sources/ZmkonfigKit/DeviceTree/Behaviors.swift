@@ -23,6 +23,14 @@ public struct KeymapBehavior: Identifiable, Sendable, Equatable {
     /// Everything else, in source order: `tapping-term-ms`, `flavor`,
     /// `quick-tap-ms`, `require-prior-idle-ms`, `hold-trigger-key-positions`, …
     public var properties: [BehaviorProperty]
+    /// What this behavior is *for*, in the user's own words — the
+    /// ``BehaviorNote`` comment in the node body, or nil when it has none.
+    ///
+    /// Not a property, and not derived from one. Everything else on this type
+    /// is read out of the devicetree and can be said back by
+    /// ``BehaviorNarrator``; this is the part no amount of reading the node
+    /// could recover, so it is the only part worth storing.
+    public var note: String?
 
     public init(
         id: UUID = UUID(),
@@ -31,7 +39,8 @@ public struct KeymapBehavior: Identifiable, Sendable, Equatable {
         compatible: String,
         bindingCells: Int,
         bindings: [String],
-        properties: [BehaviorProperty]
+        properties: [BehaviorProperty],
+        note: String? = nil
     ) {
         self.id = id
         self.nodeName = nodeName
@@ -40,6 +49,7 @@ public struct KeymapBehavior: Identifiable, Sendable, Equatable {
         self.bindingCells = bindingCells
         self.bindings = bindings
         self.properties = properties
+        self.note = note
     }
 
     /// The kind this behavior's `compatible` names, or nil when it is one this
@@ -205,6 +215,16 @@ public enum BehaviorKind: String, Sendable, CaseIterable {
         }
     }
 
+    /// The term ``Glossary`` files this kind under — `hold-tap`, `caps-word`.
+    ///
+    /// Derived from ``compatible`` rather than written out again, so a kind
+    /// cannot be added to this enum without also having somewhere to look its
+    /// explanation up; the coverage test in `GlossaryTests` is what turns that
+    /// into a failure rather than a blank popover.
+    public var glossaryTerm: String {
+        String(compatible.dropFirst("zmk,behavior-".count))
+    }
+
     /// What this kind's `bindings` property holds, if it has one at all.
     public var bindings: BehaviorBindings {
         switch self {
@@ -362,6 +382,13 @@ public enum BehaviorWriter {
         _ behavior: KeymapBehavior, indent: String, propertyIndent: String
     ) -> String {
         var lines = ["\(indent)\(behavior.label): \(behavior.nodeName) {"]
+        // First line of the body, so it introduces the node rather than
+        // interrupting it — and so a reader meets the sentence before the
+        // milliseconds.
+        if let note = behavior.note,
+           let comment = BehaviorNote.comment(note, indent: propertyIndent) {
+            lines.append(propertyIndent + comment)
+        }
         for property in properties(of: behavior) {
             lines.append(propertyIndent + line(property.name, property.value))
         }

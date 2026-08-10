@@ -38,7 +38,7 @@ struct MacroEditorView: View {
     private var summary: some View {
         Card {
             VStack(alignment: .leading, spacing: theme.metric(.spacingXS)) {
-                SectionLabel(text: "Macro")
+                SectionLabel(text: "Macro", term: "macro")
                 Text("&\(macro.label)")
                     .font(theme.font(.mono))
                     .foregroundStyle(theme.color(.primaryText))

@@ -8,7 +8,7 @@ import Foundation
 /// vendored and version-controlled, so a fifth kind only ever appears when
 /// someone re-vendors it, and a loud "could not load ZMK metadata" at that
 /// point is far easier to act on than a slot quietly editing the wrong thing.
-public enum ParamKind: String, Codable, Sendable {
+public enum ParamKind: String, Codable, Sendable, CaseIterable {
     case code, layer, mod, command
 }
 
@@ -75,6 +75,35 @@ public struct ZMKKeycode: Codable, Equatable, Sendable, Identifiable {
         return context?.lowercased().contains(foldedQuery) == true
     }
 
+    /// The platforms this keycode is known not to work on, or nil where it
+    /// works everywhere anyone has recorded.
+    ///
+    /// Only an explicit `false` counts. A null in the vendored table means
+    /// nobody tested it, and two thirds of the list has at least one — saying
+    /// "unknown" that often would bury the cases that genuinely do not work.
+    public var unsupportedSummary: String? {
+        guard let os else { return nil }
+        let missing = [
+            (os.macos, "macOS"), (os.ios, "iOS"), (os.windows, "Windows"),
+            (os.linux, "Linux"), (os.android, "Android"),
+        ].filter { $0.0 == false }.map(\.1)
+        guard !missing.isEmpty else { return nil }
+        return "Does not work on \(missing.joined(separator: ", "))."
+    }
+
+    /// Everything known about this keycode, for a tooltip: what it is, what
+    /// else it can be called, and where it will not work. The picker's row is
+    /// one line and has to truncate; this does not.
+    public var detail: String {
+        var parts: [String] = []
+        if let description { parts.append(description) }
+        if names.count > 1 {
+            parts.append("Also written \(names.dropFirst().joined(separator: ", ")).")
+        }
+        if let unsupportedSummary { parts.append(unsupportedSummary) }
+        return parts.joined(separator: "\n")
+    }
+
     public struct OSSupport: Codable, Equatable, Sendable {
         public var windows: Bool?
         public var linux: Bool?
@@ -101,6 +130,13 @@ public enum ZMKMetadata {
 
     public static func loadKeycodes(bundle: Bundle = ZMKMetadata.resourceBundle) throws -> [ZMKKeycode] {
         try load("zmk-keycodes", as: [ZMKKeycode].self, bundle: bundle)
+    }
+
+    /// The hand-written prose for behaviors, kinds, properties and concepts.
+    /// Unlike the other two this file is ours rather than vendored — upstream
+    /// ships no machine-readable descriptions of what a behavior *does*.
+    public static func loadGlossary(bundle: Bundle = ZMKMetadata.resourceBundle) throws -> Glossary {
+        Glossary(entries: try load("zmk-glossary", as: [GlossaryEntry].self, bundle: bundle))
     }
 
     private static func load<T: Decodable>(_ name: String, as type: T.Type, bundle: Bundle) throws -> T {

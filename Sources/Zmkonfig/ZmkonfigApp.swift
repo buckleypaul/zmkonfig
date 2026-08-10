@@ -9,6 +9,7 @@ struct ZmkonfigApp: App {
     @State private var llm: LLMModel
     @State private var explain: ExplainModel
     @State private var assistant: AssistantModel
+    @State private var glossaryModel = GlossaryModel()
     @State private var themeEngine = ThemeEngine.shared
 
     init() {
@@ -35,6 +36,8 @@ struct ZmkonfigApp: App {
         Window("Zmkonfig", id: Self.mainWindowID) {
             RootView(model: model, build: build, llm: llm, explain: explain, assistant: assistant)
                 .frame(minWidth: 1000, minHeight: 640)
+                .environment(glossaryModel)
+                .environment(\.glossary, model.glossary)
         }
         .defaultSize(width: 1240, height: 780)
         .commands {
@@ -60,6 +63,12 @@ struct ZmkonfigApp: App {
                 Button("Save & Review Changes…") { Task { await model.saveAndReview() } }
                     .keyboardShortcut("s")
                     .disabled(model.repo == nil)
+            }
+
+            // Replacing rather than adding: the default Help item opens a help
+            // book this app does not ship, so it only ever showed an error.
+            CommandGroup(replacing: .help) {
+                GlossaryMenuItem()
             }
 
             CommandGroup(after: .toolbar) {
@@ -95,11 +104,24 @@ struct ZmkonfigApp: App {
             }
         }
 
+        // What every piece of ZMK jargon in the editor means. A window of its
+        // own so it can sit open beside the keymap it is explaining, and a
+        // `Window` rather than a `WindowGroup` so a badge clicked twice raises
+        // the one that is open instead of opening a second.
+        Window("ZMK Glossary", id: GlossaryModel.windowID) {
+            GlossaryWindow(model: glossaryModel, glossary: model.glossary)
+        }
+        .defaultSize(width: 860, height: 620)
+        .keyboardShortcut("/", modifiers: .command)
+
         // The keymap at a glance, from anywhere. It outlives the editor window
         // — see `applicationShouldTerminateAfterLastWindowClosed` — so closing
         // the window leaves the layers one click away and Quit is the way out.
         MenuBarExtra("Zmkonfig", systemImage: "keyboard") {
             MenuBarPanelScene(model: model)
+                // Its own scene, so it does not inherit the editor window's
+                // environment — and its boards read bindings the same way.
+                .environment(\.glossary, model.glossary)
         }
         .menuBarExtraStyle(.window)
 
@@ -108,6 +130,17 @@ struct ZmkonfigApp: App {
         Settings {
             SettingsRootView(llm: llm)
         }
+    }
+}
+
+/// The Help menu's one item. A view rather than a bare `Button` because
+/// `openWindow` is only reachable from inside one.
+private struct GlossaryMenuItem: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("ZMK Glossary") { openWindow(id: GlossaryModel.windowID) }
+            .keyboardShortcut("/")
     }
 }
 

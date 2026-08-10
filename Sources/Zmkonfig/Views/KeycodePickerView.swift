@@ -101,6 +101,13 @@ struct KeycodePickerView: View {
                         .lineLimit(1)
                         .frame(maxWidth: 170, alignment: .trailing)
                 }
+                // A keycode ZMK records as not working somewhere. The row says
+                // only that there is something to know; the tooltip says what.
+                if keycode.unsupportedSummary != nil {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(theme.font(.caption))
+                        .foregroundStyle(theme.color(.warning))
+                }
                 if keycode.primaryName == current {
                     Image(systemName: "checkmark")
                         .font(theme.font(.caption))
@@ -110,6 +117,9 @@ struct KeycodePickerView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // The row truncates the description to one line to keep 366 of them
+        // scannable; this is where the rest of it lives.
+        .help(keycode.detail)
     }
 
     private func footer(matchCount: Int) -> some View {

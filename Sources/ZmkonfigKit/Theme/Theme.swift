@@ -107,6 +107,15 @@ public enum ThemeMetricToken: String, CaseIterable, Sendable {
     case menuBarThumbnailWidth
     case menuBarThumbnailHeight
     case menuBarComboListHeight
+
+    case glossaryWindowWidth
+    case glossaryWindowHeight
+    case glossaryTermListWidth
+    /// How wide a help popover is allowed to get. Narrow on purpose: an
+    /// explanation set in a long line is measurably harder to read, and the
+    /// popover is the short form — the glossary window is where the prose has
+    /// room to breathe.
+    case helpPopoverWidth
 }
 
 public enum ThemeFontToken: String, CaseIterable, Sendable {
@@ -545,6 +554,11 @@ extension Theme {
             .menuBarThumbnailWidth: 310,
             .menuBarThumbnailHeight: 132,
             .menuBarComboListHeight: 190,
+
+            .glossaryWindowWidth: 760,
+            .glossaryWindowHeight: 560,
+            .glossaryTermListWidth: 230,
+            .helpPopoverWidth: 320,
         ]),
         fonts: fontTable([
             .title: ThemeFontSpec(size: 15, weight: .semibold),

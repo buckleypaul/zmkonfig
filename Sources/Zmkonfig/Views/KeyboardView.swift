@@ -20,6 +20,10 @@ enum BoardDensity {
 /// whole board to fit whatever room it is given.
 struct KeyboardView: View {
     @Environment(\.theme) private var theme
+    /// Read from the environment rather than passed in: the board is drawn from
+    /// four callers, none of which is otherwise interested in what a binding
+    /// means, and the glossary is the same for all of them.
+    @Environment(\.glossary) private var glossary
 
     let layout: [KeyPosition]
     let bindings: [KeyBinding]
@@ -80,8 +84,21 @@ struct KeyboardView: View {
         )
         .contentShape(Rectangle())
         .onTapGesture { onSelect?(index) }
-        .help(onSelect == nil ? "" : binding?.text ?? "position \(index) — no binding in this layer")
+        // A sentence, not the binding text. Hovering a key used to show the
+        // exact string — `&mt LCTRL A` — that the person hovering it did not
+        // understand; the text is still there, on the line underneath.
+        .help(onSelect == nil ? "" : help(for: binding, at: index))
         .allowsHitTesting(onSelect != nil)
+    }
+
+    private func help(for binding: KeyBinding?, at index: Int) -> String {
+        guard let binding else { return "position \(index) — no binding in this layer" }
+        return BindingNarrator.keyDescription(
+            for: binding,
+            behavior: behaviors.behavior(for: binding.behavior),
+            layers: layers,
+            glossary: glossary
+        )
     }
 
     // MARK: - Geometry

@@ -71,10 +71,16 @@ split board.
 ```
 Sources/ZmkonfigKit/     library — all logic, no UI, unit tested
   DeviceTree/            lexer, parser, KeymapFile, SourceEdit splicing,
-                         binding table renderer, combo reader + writer
+                         binding table renderer, combo reader + writer,
+                         BehaviorNote — the `/* zmkonfig: … */` description a
+                         behavior node carries, and the sanitiser that makes it
+                         unable to be anything but a comment
   Model/                 KeyBinding, KeyboardLayout, ZMKMetadata,
                          BindingLabel + ModifierFunction + BindingAlgebra
                          (what a binding means and how it is edited),
+                         Glossary — the vendored prose behind every `?` badge;
+                         BindingNarrator and BehaviorNarrator say a binding and
+                         a keymap-defined behavior out loud from it,
                          BehaviorIndex, BehaviorPropertyShape,
                          KeymapContext — the read-only snapshot AssistantTools
                          (and its ProposedEdit), KeymapDigest and ContextPack
@@ -85,7 +91,10 @@ Sources/ZmkonfigKit/     library — all logic, no UI, unit tested
                          Flasher, Keychain, PathComponent,
                          AnthropicClient + AnthropicConversation
   Theme/                 Theme + ThemeEngine
-  Resources/             vendored zmk-behaviors.json, zmk-keycodes.json
+  Resources/             vendored zmk-behaviors.json, zmk-keycodes.json,
+                         zmk-glossary.json — hand-written, because upstream
+                         ships no machine-readable prose; coverage tests fail
+                         when a behavior, kind or property has no entry
 Sources/Zmkonfig/        the SwiftUI app
   Model/                 AppModel — repo, keymap, layout, selection
                          BuildModel — push → Actions run → artifact → flash
@@ -181,8 +190,8 @@ The client itself:
   models accept (`output_config.effort`, `fallbacks`, `thinking`) — a key set to
   Haiku would start 400ing.
 
-**Model output must never reach the `.keymap`.** `ExplainModel` is read-only by
-construction — it takes a `KeymapLayer` or a diff string and returns prose. The
+**No model output may become devicetree.** `ExplainModel` mostly returns prose
+nobody keeps — a `KeymapLayer` or a diff string in, paragraphs out. The
 assistant does propose changes, and the safety story there is structural, not a
 matter of prompting: its edit tools only hand an `AssistantTools.ProposedEdit`
 back to `AssistantModel`, the proposal sits in the transcript until the user
@@ -190,6 +199,18 @@ presses Apply, and applying runs `AppModel.applyProposal` → `KeymapFile`
 mutators → `SourceEdit` like every other edit. **No case of `ProposedEdit`
 carries devicetree text, and none may be added that does** — that is what makes
 splicing model output impossible rather than merely discouraged.
+
+There is exactly one path by which model output does reach the file, and it is
+deliberate: `ExplainModel.describeBehavior` drafts a behavior's description, the
+user presses **Use this** to put it in the Description field, and saving writes
+it as the `/* zmkonfig: … */` comment `BehaviorNote` owns. It is held to the
+same standard rather than exempted from it. Everything on the way in goes
+through **`BehaviorNote.sanitized`, whose output can contain neither `*/` nor
+`/*`** — a `*` is never allowed to be followed by a `/`, so text inside the
+comment cannot close it, and therefore cannot become devicetree. That invariant
+is the whole permission slip, it is tested directly in `BehaviorNoteTests`, and
+weakening it turns a description field into an injection site. A note is also
+never written by the app on its own: drafting fills a field, and the user saves.
 
 ## Committing
 

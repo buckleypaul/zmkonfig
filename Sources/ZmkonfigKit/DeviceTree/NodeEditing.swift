@@ -118,8 +118,20 @@ struct NodeAnchor: Sendable {
     let propertyIndent: String
     /// Where a property the node does not have yet gets written.
     let propertyInsertionPoint: Int
+    /// Just inside the `{`, where a node that has no ``BehaviorNote`` yet gets
+    /// one.
+    let bodyStart: Int
+    /// The node's ``BehaviorNote`` and the bytes its comment occupies, read
+    /// together so the text and the place it came from can never disagree.
+    let note: String?
+    let noteRange: Range<Int>?
 
-    init(node: DTNode, bytes: [UInt8]) {
+    /// `readsNote` is opt-in because only behaviors carry one. Scanning
+    /// unconditionally made every anchor pay for it, and a layer's body — the
+    /// whole `bindings = <…>` cell, usually the largest thing in the file — is
+    /// the worst possible place to go looking for a comment that cannot be
+    /// there. Macros are the obvious next caller to pass `true`.
+    init(node: DTNode, bytes: [UInt8], readsNote: Bool = false) {
         var propertyRanges: [String: Range<Int>] = [:]
         var valueRanges: [String: Range<Int>] = [:]
         for property in node.properties {
@@ -155,6 +167,34 @@ struct NodeAnchor: Sendable {
             ?? (indent + "    ")
         self.propertyInsertionPoint = node.properties.map(\.range.upperBound).max()
             ?? node.bodyRange.lowerBound
+        self.bodyStart = node.bodyRange.lowerBound
+
+        let note = readsNote ? BehaviorNote.read(bodyRange: node.bodyRange, bytes: bytes) : nil
+        self.note = note?.text
+        self.noteRange = note?.range
+    }
+
+    /// Adds, rewrites or removes this node's ``BehaviorNote``.
+    ///
+    /// The comment's own bytes are replaced rather than its lines, so the
+    /// indentation and the newline around it are the file's and stay the
+    /// file's. Removing one takes the whole line, because a line left holding
+    /// nothing but its indentation is not what "no description" looks like.
+    func noteEdit(to note: String?, in bytes: [UInt8]) -> SourceEdit? {
+        let text = note.flatMap { BehaviorNote.comment($0, indent: propertyIndent) }
+        switch (text, noteRange) {
+        case (nil, nil):
+            return nil
+        case (nil, .some(let range)):
+            return .delete(
+                SourceLines.start(of: range.lowerBound, in: bytes)
+                    ..< SourceLines.end(of: range.upperBound, in: bytes)
+            )
+        case (.some(let comment), .some(let range)):
+            return .replace(range, with: comment)
+        case (.some(let comment), nil):
+            return .insert(at: bodyStart, "\n" + propertyIndent + comment)
+        }
     }
 
     /// Adds, changes or removes one property of this node.

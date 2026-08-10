@@ -84,29 +84,115 @@ struct ExplainPanelView: View {
         }
         // A stale writeup under a newly selected layer would read as if it
         // described that layer.
-        .onChange(of: model.selectedLayerID) { _, _ in explain.layer.clear() }
+        .onChange(of: model.selectedLayerID) { _, _ in
+            explain.layer.clear()
+            explain.key.clear()
+        }
+        // `ClaudeAnswer` keys its text by subject, so a stale writeup cannot
+        // appear under the wrong key — but a *failure* is not subject-keyed, and
+        // one left over from the last key would read as this one's.
+        .onChange(of: model.selectedKeyIndex) { _, _ in explain.key.clear() }
     }
 
     private func content(for layer: KeymapLayer) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: theme.metric(.spacingM)) {
-                HStack {
-                    SectionLabel(text: layer.displayName)
-                    Spacer()
-                    Button(explain.layer.text(for: ExplainModel.layerSubject(layer.id)) == nil ? "Explain" : "Again") {
-                        explain.explainLayer(layer, context: model.context)
-                    }
-                    .disabled(explain.layer.isRunning)
-                }
-
-                ClaudeAnswer(
+            VStack(alignment: .leading, spacing: theme.metric(.spacingL)) {
+                ExplainSection(
+                    title: layer.displayName,
                     request: explain.layer,
                     subject: ExplainModel.layerSubject(layer.id),
                     working: "Reading the layer…",
-                    placeholder: "Claude reads this layer's bindings and describes what it is for."
+                    placeholder: "Claude reads this layer's bindings and describes what it is for.",
+                    ask: { explain.explainLayer(layer, context: model.context) }
                 )
+
+                if let index = model.selectedKeyIndex {
+                    Divider()
+                    key(at: index, on: layer)
+                }
             }
             .padding(theme.metric(.spacingM))
+        }
+    }
+
+    /// The selected key, explained on its own.
+    ///
+    /// The glossary and the narrated sentence in the editor already say what a
+    /// binding *does*, and they say it with no API key and no waiting. This
+    /// answers the part they cannot: why this key is here, what it pairs with,
+    /// and what the same position does elsewhere.
+    private func key(at index: Int, on layer: KeymapLayer) -> some View {
+        ExplainSection(
+            title: "Key \(index)",
+            request: explain.key,
+            subject: ExplainModel.keySubject(layerID: layer.id, index: index),
+            working: "Reading the key…",
+            placeholder: "Claude reads this key in the context of the layer around it.",
+            ask: { explain.explainKey(at: index, on: layer, context: model.context) }
+        ) {
+            if let binding = layer.bindings.indices.contains(index) ? layer.bindings[index] : nil {
+                Text(binding.text)
+                    .font(theme.font(.mono))
+                    .foregroundStyle(theme.color(.secondaryText))
+                    .textSelection(.enabled)
+            }
+        }
+    }
+}
+
+/// A heading, an ask button that knows whether it is asking again, whatever
+/// came back, and optionally something of the section's own between the two.
+///
+/// The layer and the key wrote this out separately and identically, differing
+/// only in their strings — so a change to how asking works had to be made twice
+/// and kept in step by eye.
+struct ExplainSection<Detail: View>: View {
+    @Environment(\.theme) private var theme
+    let title: String
+    let request: ClaudeRequest
+    let subject: String
+    let working: String
+    let placeholder: String
+    let ask: () -> Void
+    @ViewBuilder var detail: Detail
+
+    init(
+        title: String,
+        request: ClaudeRequest,
+        subject: String,
+        working: String,
+        placeholder: String,
+        ask: @escaping () -> Void,
+        @ViewBuilder detail: () -> Detail = { EmptyView() }
+    ) {
+        self.title = title
+        self.request = request
+        self.subject = subject
+        self.working = working
+        self.placeholder = placeholder
+        self.ask = ask
+        self.detail = detail()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: theme.metric(.spacingM)) {
+            HStack {
+                SectionLabel(text: title)
+                Spacer()
+                // "Again" rather than "Explain" once there is an answer, so the
+                // button says what pressing it would do rather than what it did.
+                Button(request.text(for: subject) == nil ? "Explain" : "Again", action: ask)
+                    .disabled(request.isRunning)
+            }
+
+            detail
+
+            ClaudeAnswer(
+                request: request,
+                subject: subject,
+                working: working,
+                placeholder: placeholder
+            )
         }
     }
 }

@@ -7,8 +7,25 @@ import ZmkonfigKit
 struct SectionLabel: View {
     @Environment(\.theme) private var theme
     let text: String
+    /// A glossary term to explain with a `HelpBadge` beside the label. The
+    /// badge is part of the label rather than something each caller assembles,
+    /// because the row it needs — label, badge, trailing spacer — was being
+    /// written out identically wherever a section had a term.
+    var term: String?
 
     var body: some View {
+        if let term {
+            HStack(spacing: theme.metric(.spacingXS)) {
+                label
+                HelpBadge(term: term)
+                Spacer(minLength: 0)
+            }
+        } else {
+            label
+        }
+    }
+
+    private var label: some View {
         Text(text.uppercased())
             .font(theme.font(.sectionLabel))
             .kerning(0.6)
@@ -48,6 +65,24 @@ struct Card<Content: View>: View {
             .overlay(
                 RoundedRectangle(cornerRadius: theme.metric(.cornerRadiusMedium))
                     .strokeBorder(theme.color(.border), lineWidth: theme.metric(.borderWidth))
+            )
+    }
+}
+
+/// A quieter `Card`: content set into the page rather than raised off it, with
+/// no border. For a block of prose that belongs to the field above it — a
+/// worked example, a sentence about the binding being edited.
+struct ContentBox<Content: View>: View {
+    @Environment(\.theme) private var theme
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        content
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(theme.metric(.spacingS))
+            .background(
+                RoundedRectangle(cornerRadius: theme.metric(.cornerRadiusSmall))
+                    .fill(theme.color(.contentBackground))
             )
     }
 }
@@ -115,12 +150,31 @@ struct Hint: View {
 struct FieldRow<Content: View>: View {
     @Environment(\.theme) private var theme
     let label: String
+    /// A glossary term to put a `HelpBadge` beside the label for, or nil for a
+    /// field with no general explanation to offer.
+    var term: String?
+    /// The line drawn under the control, or nil to draw none.
+    ///
+    /// Passed in rather than read from `term`, because the two are not always
+    /// the same text: a keymap-defined `&hml` is *explained* by the generic
+    /// hold-tap entry the badge opens, but what belongs under the picker is a
+    /// description of that node in particular.
+    ///
+    /// The caption is the point of the pair. A badge only helps someone who
+    /// thinks to hover it, and the person who does not know what `&mt` is does
+    /// not know there is anything to hover; one line of always-visible prose
+    /// under the control is what actually answers the question.
+    var summary: String?
     @ViewBuilder var content: Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: theme.metric(.spacingXS)) {
-            SectionLabel(text: label)
+            SectionLabel(text: label, term: term)
             content
+            if let summary {
+                Caption(summary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 }
@@ -217,6 +271,57 @@ struct OptionalIntegerField: View {
     }
 }
 
+/// Opens a popover once the pointer has rested on this view, and closes it the
+/// moment the pointer leaves.
+///
+/// The delay is the whole point: without one, dragging the pointer across a
+/// toolbar or a column of fields flashes the popover of everything passed on
+/// the way. `isHovering` is handed back rather than kept private because both
+/// callers restyle themselves while hovered, and a second `.onHover` to learn
+/// what this one already knows would be two sources of the same truth.
+///
+/// The content is a label, not a control. Without `allowsHitTesting(false)` it
+/// takes the pointer the moment it opens, the view beneath reads as
+/// un-hovered, and the two states chase each other.
+extension View {
+    func hoverPopover<Content: View>(
+        isHovering: Binding<Bool>,
+        delay: Duration = .milliseconds(400),
+        arrowEdge: Edge = .bottom,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        modifier(HoverPopover(isHovering: isHovering, delay: delay, arrowEdge: arrowEdge, popover: content))
+    }
+}
+
+private struct HoverPopover<Popover: View>: ViewModifier {
+    @Binding var isHovering: Bool
+    let delay: Duration
+    let arrowEdge: Edge
+    @ViewBuilder var popover: () -> Popover
+
+    @State private var isShowing = false
+
+    func body(content: Content) -> some View {
+        content
+            .onHover { hovering in
+                isHovering = hovering
+                if !hovering { isShowing = false }
+            }
+            // Keyed on the hover state so leaving cancels the pending open
+            // rather than letting it land after the pointer has gone.
+            .task(id: isHovering) {
+                guard isHovering else { return }
+                try? await Task.sleep(for: delay)
+                guard !Task.isCancelled else { return }
+                isShowing = true
+            }
+            .popover(isPresented: $isShowing, arrowEdge: arrowEdge) {
+                popover().allowsHitTesting(false)
+            }
+    }
+}
+
 /// A toolbar button that explains itself in a popover on hover. The button
 /// itself never changes size, so the toolbar does not reflow under the pointer.
 ///
@@ -232,29 +337,12 @@ struct ToolbarActionButton: View {
     let action: () -> Void
 
     @State private var isHovering = false
-    @State private var isShowingHelp = false
-
-    /// Long enough that dragging the pointer across the toolbar to reach one
-    /// button does not flash the popovers of the ones passed on the way.
-    private static let hoverDelay = Duration.milliseconds(400)
 
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
         }
-        .onHover { hovering in
-            isHovering = hovering
-            if !hovering { isShowingHelp = false }
-        }
-        // Keyed on the hover state so leaving cancels the pending open rather
-        // than letting it land after the pointer has gone.
-        .task(id: isHovering) {
-            guard isHovering else { return }
-            try? await Task.sleep(for: Self.hoverDelay)
-            guard !Task.isCancelled else { return }
-            isShowingHelp = true
-        }
-        .popover(isPresented: $isShowingHelp, arrowEdge: .bottom) {
+        .hoverPopover(isHovering: $isHovering) {
             VStack(alignment: .leading, spacing: theme.metric(.spacingXS)) {
                 Text(title)
                     .font(theme.font(.heading))
@@ -266,10 +354,6 @@ struct ToolbarActionButton: View {
             }
             .padding(theme.metric(.spacingM))
             .frame(width: theme.metric(.dialogWidth) / 2)
-            // The popover is a label, not a control. Without this it takes the
-            // pointer the moment it opens, the button reads as un-hovered, and
-            // the two states chase each other.
-            .allowsHitTesting(false)
         }
         .accessibilityLabel(title)
         .accessibilityHint(help)
