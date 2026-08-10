@@ -75,10 +75,15 @@ Sources/ZmkonfigKit/     library — all logic, no UI, unit tested
   Model/                 KeyBinding, KeyboardLayout, ZMKMetadata,
                          BindingLabel + ModifierFunction + BindingAlgebra
                          (what a binding means and how it is edited),
-                         BehaviorIndex, KeymapContext — the read-only snapshot
-                         AssistantTools, ProposedEdit and KeymapDigest run on
+                         BehaviorIndex, BehaviorPropertyShape,
+                         KeymapContext — the read-only snapshot AssistantTools
+                         (and its ProposedEdit), KeymapDigest and ContextPack
+                         run on. ContextPack builds the prompt prefix; every
+                         list it emits is sorted, because a prefix that
+                         reorders itself between calls cannot be cached.
   Services/              Shell, Git, RepoManager, LayoutCatalog, GitHubClient,
-                         Flasher, Keychain, AnthropicClient
+                         Flasher, Keychain, PathComponent,
+                         AnthropicClient + AnthropicConversation
   Theme/                 Theme + ThemeEngine
   Resources/             vendored zmk-behaviors.json, zmk-keycodes.json
 Sources/Zmkonfig/        the SwiftUI app
@@ -87,6 +92,7 @@ Sources/Zmkonfig/        the SwiftUI app
                          LLMModel — API key, model choice, verification
                          ClaudeRequest — one question and its answer
                          ExplainModel — the prompts, one request per feature
+                         AssistantModel — the chat loop and staged proposals
                          (all @MainActor @Observable; views read them, never
                          the services directly)
   Views/                 all SwiftUI views
@@ -160,7 +166,12 @@ The client itself:
 - There is no official Anthropic SDK for Swift, so `AnthropicClient` speaks REST
   over `URLSession`. Two endpoints are used: `GET /v1/models` (which doubles as
   key verification — it fails loudly on a bad key and costs no tokens on a good
-  one) and one non-streaming `POST /v1/messages`.
+  one) and non-streaming `POST /v1/messages`.
+- `converse` runs the multi-turn tool loop the assistant needs. A turn that only
+  calls tools has no prose, so emptiness is not the end condition — the loop
+  ends when `toolUses` comes back empty. A turn that stops on `max_tokens` may
+  have a half-written `tool_use` as its last block; that is reported as
+  truncation and stops the loop rather than being run.
 - A refusal is an HTTP **200** with empty content and `stop_reason: "refusal"`.
   It is checked before the content is read, because otherwise it reads as a
   successful empty answer.
@@ -170,10 +181,15 @@ The client itself:
   models accept (`output_config.effort`, `fallbacks`, `thinking`) — a key set to
   Haiku would start 400ing.
 
-**Model output must never reach the `.keymap`.** Both current features are
-read-only by construction: they take a `KeymapLayer` or a diff string and return
-prose. Anything that ever writes has to go through `AppModel.edit` and the
-`SourceEdit` splice like every other edit, not around them.
+**Model output must never reach the `.keymap`.** `ExplainModel` is read-only by
+construction — it takes a `KeymapLayer` or a diff string and returns prose. The
+assistant does propose changes, and the safety story there is structural, not a
+matter of prompting: its edit tools only hand an `AssistantTools.ProposedEdit`
+back to `AssistantModel`, the proposal sits in the transcript until the user
+presses Apply, and applying runs `AppModel.applyProposal` → `KeymapFile`
+mutators → `SourceEdit` like every other edit. **No case of `ProposedEdit`
+carries devicetree text, and none may be added that does** — that is what makes
+splicing model output impossible rather than merely discouraged.
 
 ## Committing
 
