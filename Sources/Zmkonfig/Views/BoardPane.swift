@@ -129,47 +129,52 @@ struct BoardPane: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .navigation) {
-            Button {
+            ToolbarActionButton(
+                title: "Repository",
+                systemImage: "folder",
+                help: "Open a different repository"
+            ) {
                 model.isShowingRepoSheet = true
-            } label: {
-                Label("Repository", systemImage: "folder")
             }
-            .help("Open a different repository")
 
-            Button {
+            ToolbarActionButton(
+                title: "Keyboard",
+                systemImage: "keyboard",
+                help: "Change the keyboard layout"
+            ) {
                 model.isShowingCatalogSheet = true
                 Task { await model.loadCatalog() }
-            } label: {
-                Label("Keyboard", systemImage: "keyboard")
             }
             .disabled(model.repo == nil)
-            .help("Change the keyboard layout")
         }
 
         ToolbarItemGroup(placement: .primaryAction) {
-            Button {
+            ToolbarActionButton(
+                title: "Pull",
+                systemImage: "arrow.down",
+                help: "Pull: fetch the latest commits from GitHub and reload the keymap"
+            ) {
                 Task { await model.pull() }
-            } label: {
-                Label("Pull", systemImage: "arrow.down")
             }
             .disabled(model.repo == nil || model.busyMessage != nil)
-            .help("Pull: fetch the latest commits from GitHub and reload the keymap")
 
-            Button {
+            ToolbarActionButton(
+                title: "Reload",
+                systemImage: "arrow.clockwise",
+                help: "Reload: re-read the keymap from disk, discarding unsaved edits"
+            ) {
                 Task { await model.reloadKeymap() }
-            } label: {
-                Label("Reload", systemImage: "arrow.clockwise")
             }
             .disabled(model.repo == nil || model.busyMessage != nil)
-            .help("Reload: re-read the keymap from disk, discarding unsaved edits")
 
-            Button {
+            ToolbarActionButton(
+                title: "Save & Review",
+                systemImage: "square.and.arrow.down",
+                help: "Save & Review: write the keymap, show the diff, then commit and push it to build new firmware"
+            ) {
                 Task { await model.saveAndReview() }
-            } label: {
-                Label("Save & Review", systemImage: "square.and.arrow.down")
             }
             .disabled(model.repo == nil || model.keymap == nil || model.busyMessage != nil)
-            .help("Save & Review: write the keymap, show the diff, then commit and push it to build new firmware")
         }
     }
 }

@@ -50,13 +50,20 @@ struct ContentView: View {
     let assistant: AssistantModel
 
     var body: some View {
-        NavigationSplitView {
+        // The sidebar is the layer list — it is what the middle column is
+        // showing and what the inspector is editing, so a hidden one leaves the
+        // window unnavigable. A constant binding is what refuses the collapse:
+        // SwiftUI has nowhere to write the new visibility, so a drag to zero
+        // width snaps back. `toolbar(removing:)` on the sidebar and the
+        // `.sidebar` command group below take away the two ways to ask.
+        NavigationSplitView(columnVisibility: .constant(.all)) {
             SidebarView(model: model)
                 .navigationSplitViewColumnWidth(
                     min: theme.metric(.sidebarMinWidth),
                     ideal: theme.metric(.sidebarIdealWidth),
                     max: theme.metric(.sidebarMaxWidth)
                 )
+                .toolbar(removing: .sidebarToggle)
         } content: {
             BoardPane(model: model)
                 .navigationSplitViewColumnWidth(

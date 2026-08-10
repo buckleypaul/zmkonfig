@@ -217,6 +217,65 @@ struct OptionalIntegerField: View {
     }
 }
 
+/// A toolbar button that explains itself in a popover on hover. The button
+/// itself never changes size, so the toolbar does not reflow under the pointer.
+///
+/// This replaces the `help` tooltip rather than adding to it — two explanations
+/// of one button appearing a second apart is worse than either alone. The help
+/// sentence becomes the accessibility hint, which is where VoiceOver looks for
+/// it, so nothing is lost for a user who never hovers.
+struct ToolbarActionButton: View {
+    @Environment(\.theme) private var theme
+    let title: String
+    let systemImage: String
+    let help: String
+    let action: () -> Void
+
+    @State private var isHovering = false
+    @State private var isShowingHelp = false
+
+    /// Long enough that dragging the pointer across the toolbar to reach one
+    /// button does not flash the popovers of the ones passed on the way.
+    private static let hoverDelay = Duration.milliseconds(400)
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+        }
+        .onHover { hovering in
+            isHovering = hovering
+            if !hovering { isShowingHelp = false }
+        }
+        // Keyed on the hover state so leaving cancels the pending open rather
+        // than letting it land after the pointer has gone.
+        .task(id: isHovering) {
+            guard isHovering else { return }
+            try? await Task.sleep(for: Self.hoverDelay)
+            guard !Task.isCancelled else { return }
+            isShowingHelp = true
+        }
+        .popover(isPresented: $isShowingHelp, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: theme.metric(.spacingXS)) {
+                Text(title)
+                    .font(theme.font(.heading))
+                    .foregroundStyle(theme.color(.primaryText))
+                Text(help)
+                    .font(theme.font(.caption))
+                    .foregroundStyle(theme.color(.secondaryText))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(theme.metric(.spacingM))
+            .frame(width: theme.metric(.dialogWidth) / 2)
+            // The popover is a label, not a control. Without this it takes the
+            // pointer the moment it opens, the button reads as un-hovered, and
+            // the two states chase each other.
+            .allowsHitTesting(false)
+        }
+        .accessibilityLabel(title)
+        .accessibilityHint(help)
+    }
+}
+
 /// An inline warning strip: visible, but not a modal.
 struct WarningStrip: View {
     @Environment(\.theme) private var theme

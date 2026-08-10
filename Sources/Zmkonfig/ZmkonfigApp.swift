@@ -40,6 +40,10 @@ struct ZmkonfigApp: App {
         .commands {
             CommandGroup(replacing: .newItem) { }
 
+            // The sidebar does not hide — see `ContentView`. Leaving ⌃⌘S in
+            // the View menu would offer a toggle that does nothing.
+            CommandGroup(replacing: .sidebar) { }
+
             CommandMenu("Keymap") {
                 Button("Open Repository…") { model.isShowingRepoSheet = true }
                     .keyboardShortcut("o")
