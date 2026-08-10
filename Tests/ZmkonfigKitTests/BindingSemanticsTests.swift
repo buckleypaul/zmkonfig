@@ -159,6 +159,35 @@ struct BindingSemanticsTests {
         #expect(momentary.hold == "MO")
     }
 
+    @Test("A chord names its keys off a layer, and keeps the token when it cannot")
+    func chordKeyNames() throws {
+        let index = try Self.cradioIndex()
+        let layers = try Fixture.cradio().layers
+        let base = layers.first
+
+        func names(_ tokens: [String]) -> [String] {
+            BindingLabel.keyNames(for: tokens, on: base, layers: layers, behaviors: index)
+        }
+
+        // A position the base layer binds is named by what it types.
+        let first = try #require(base?.bindings.first)
+        let firstLabel = BindingLabel.make(first, behavior: index.behavior(for: first.behavior), layers: layers)
+        #expect(names(["0"]) == [firstLabel.tap])
+
+        // A macro this editor cannot resolve has no position to name.
+        #expect(names(["POS_LH_T1"]) == ["POS_LH_T1"])
+        // Nor has a position off the end of the layer.
+        #expect(names(["9999"]) == ["9999"])
+        // `&trans`/`&none` label as ▽ and ✕, which say less than the number.
+        let quiet = KeymapLayer(
+            id: 0, nodeName: "quiet", displayName: "Quiet",
+            bindings: [KeyBinding(behavior: "&trans", params: []), KeyBinding(behavior: "&none", params: [])]
+        )
+        #expect(BindingLabel.keyNames(for: ["0", "1"], on: quiet, layers: layers, behaviors: index) == ["0", "1"])
+        // No layer at all — an empty keymap — leaves every token alone.
+        #expect(BindingLabel.keyNames(for: ["0"], on: nil, layers: [], behaviors: index) == ["0"])
+    }
+
     // MARK: - Reshaping a binding
 
     private static let keyPress = ZMKBehavior(code: "&kp", name: "Key press", params: [.code])

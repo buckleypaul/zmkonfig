@@ -1,6 +1,21 @@
 import SwiftUI
 import ZmkonfigKit
 
+/// How small the board may be drawn. A thumbnail has to shrink far below the
+/// editor's floor — a 42-key board in a menubar cell lands around 0.15 — and
+/// clamping it there would push the board out of its cell instead of fitting.
+enum BoardDensity {
+    case editor
+    case thumbnail
+
+    var minScaleToken: ThemeMetricToken {
+        switch self {
+        case .editor: .boardMinScale
+        case .thumbnail: .boardThumbnailMinScale
+        }
+    }
+}
+
 /// Draws the physical keyboard from `KeyPosition` coordinates and scales the
 /// whole board to fit whatever room it is given.
 struct KeyboardView: View {
@@ -10,9 +25,13 @@ struct KeyboardView: View {
     let bindings: [KeyBinding]
     let layers: [KeymapLayer]
     let behaviors: BehaviorIndex
-    let selectedIndex: Int?
-    let highlightedIndices: Set<Int>
-    let onSelect: (Int) -> Void
+    var selectedIndex: Int? = nil
+    var highlightedIndices: Set<Int> = []
+    /// Nil for a board that cannot be clicked. That also drops the per-key
+    /// gesture and tooltip, which a thumbnail's keycaps are far too small to
+    /// aim at anyway.
+    var onSelect: ((Int) -> Void)? = nil
+    var density: BoardDensity = .editor
 
     var body: some View {
         GeometryReader { proxy in
@@ -22,7 +41,7 @@ struct KeyboardView: View {
             let scale = Self.scale(
                 board: boardSize,
                 available: proxy.size,
-                min: theme.metric(.boardMinScale),
+                min: theme.metric(density.minScaleToken),
                 max: theme.metric(.boardMaxScale)
             )
 
@@ -60,8 +79,9 @@ struct KeyboardView: View {
             inset: theme.metric(.keyInset)
         )
         .contentShape(Rectangle())
-        .onTapGesture { onSelect(index) }
-        .help(binding?.text ?? "position \(index) — no binding in this layer")
+        .onTapGesture { onSelect?(index) }
+        .help(onSelect == nil ? "" : binding?.text ?? "position \(index) — no binding in this layer")
+        .allowsHitTesting(onSelect != nil)
     }
 
     // MARK: - Geometry

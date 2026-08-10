@@ -19,6 +19,31 @@ public enum BindingLabel {
         }
     }
 
+    /// Names the key positions of a chord by what `layer` binds them to, so a
+    /// combo reads as `J + K` rather than `21 + 22`.
+    ///
+    /// Takes the position *tokens* — see ``KeymapFile/positionTokens(of:)`` —
+    /// because a `POS_*` macro this editor cannot resolve has no position to
+    /// name and has to stay as itself. A token is also kept verbatim when the
+    /// layer has nothing at it or binds `&trans`/`&none`, which label as ▽ and
+    /// ✕: a chord of dashes says less than the numbers it replaced.
+    public static func keyNames(
+        for tokens: [String],
+        on layer: KeymapLayer?,
+        layers: [KeymapLayer],
+        behaviors: BehaviorIndex
+    ) -> [String] {
+        tokens.map { token in
+            guard let index = Int(token), let layer,
+                  layer.bindings.indices.contains(index)
+            else { return token }
+            let binding = layer.bindings[index]
+            let label = make(binding, behavior: behaviors.behavior(for: binding.behavior), layers: layers)
+            guard label.kind == .normal, !label.tap.isEmpty else { return token }
+            return label.tap
+        }
+    }
+
     public static func make(_ binding: KeyBinding, behavior: ZMKBehavior?, layers: [KeymapLayer]) -> Label {
         switch binding.behavior {
         case "&trans": return Label(tap: "▽", hold: nil, kind: .transparent)

@@ -306,7 +306,7 @@ struct SidebarView: View {
     /// The positions as the file states them, so this cannot disagree with the
     /// inspector about a combo whose positions are `POS_*` macros.
     private func comboSubtitle(_ combo: KeymapCombo) -> String {
-        let tokens = model.keymap?.positionTokens(of: combo) ?? combo.keyPositions.map(String.init)
+        let tokens = model.positionTokens(of: combo)
         if tokens.isEmpty { return "no keys yet" }
         return "keys \(tokens.joined(separator: ", "))"
     }

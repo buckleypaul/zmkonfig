@@ -1,26 +1,17 @@
 import SwiftUI
 import ZmkonfigKit
 
-/// Resolves the theme for the current appearance and hands it to everything
-/// below. This is the only place the theme is read from the engine.
+/// The editor window's scene root. `themedScene` is what resolves the theme for
+/// everything below it.
 struct RootView: View {
-    @Environment(\.colorScheme) private var colorScheme
     @Bindable var model: AppModel
     @Bindable var build: BuildModel
     @Bindable var llm: LLMModel
     let explain: ExplainModel
     let assistant: AssistantModel
 
-    private let themeEngine = ThemeEngine.shared
-
     var body: some View {
-        content
-            .environment(\.theme, themeEngine.resolved(for: themeEngine.scheme(system: colorScheme)))
-            // Forces the appearance on the window's own controls — scrollers,
-            // pickers, text fields — which draw themselves and would otherwise
-            // stay in the system's appearance while the theme moved. Nil in
-            // auto mode, which is what leaves them following macOS.
-            .preferredColorScheme(themeEngine.appearance.colorScheme)
+        content.themedScene()
     }
 
     private var content: some View {

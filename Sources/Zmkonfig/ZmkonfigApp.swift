@@ -24,8 +24,15 @@ struct ZmkonfigApp: App {
         _assistant = State(initialValue: AssistantModel(llm: settings, app: app))
     }
 
+    /// The editor window's scene id, so the menubar panel can reopen it after
+    /// it has been closed.
+    static let mainWindowID = "editor"
+
     var body: some Scene {
-        WindowGroup {
+        // `Window` rather than `WindowGroup`: there is one editor, and
+        // `openWindow` on a group opens a second one rather than raising the
+        // one that is already there.
+        Window("Zmkonfig", id: Self.mainWindowID) {
             RootView(model: model, build: build, llm: llm, explain: explain, assistant: assistant)
                 .frame(minWidth: 1000, minHeight: 640)
         }
@@ -84,11 +91,38 @@ struct ZmkonfigApp: App {
             }
         }
 
+        // The keymap at a glance, from anywhere. It outlives the editor window
+        // — see `applicationShouldTerminateAfterLastWindowClosed` — so closing
+        // the window leaves the layers one click away and Quit is the way out.
+        MenuBarExtra("Zmkonfig", systemImage: "keyboard") {
+            MenuBarPanelScene(model: model)
+        }
+        .menuBarExtraStyle(.window)
+
         // Reached from the app menu and ⌘,. Its own scene, so it carries its
         // own theme rather than the main window's.
         Settings {
             SettingsRootView(llm: llm)
         }
+    }
+}
+
+/// Wraps the panel so it can hold `openWindow`, which is only available to a
+/// view inside a scene.
+private struct MenuBarPanelScene: View {
+    @Environment(\.openWindow) private var openWindow
+    let model: AppModel
+
+    var body: some View {
+        MenuBarPanel(model: model, showEditor: showEditor)
+            .themedScene()
+    }
+
+    /// Raises the editor, reopening it if it was closed — `openWindow` on a
+    /// `Window` scene does both.
+    private func showEditor() {
+        NSApp.activate(ignoringOtherApps: true)
+        openWindow(id: ZmkonfigApp.mainWindowID)
     }
 }
 
@@ -101,7 +135,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// False so the menubar item survives closing the editor window: the whole
+    /// point of it is to be there at any point. Quit is ⌘Q, or the button in
+    /// the menubar panel.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        false
     }
 }

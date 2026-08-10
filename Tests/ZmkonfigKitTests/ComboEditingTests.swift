@@ -505,4 +505,22 @@ struct ComboEditingTests {
                 == (try Fixture.bindingLines(of: layer, in: source)))
         }
     }
+
+    @Test("A combo with no layers property fires on every layer")
+    func activeLayers() {
+        let binding = KeyBinding(behavior: "&kp", params: [BindingParam(value: "ESC")])
+        let everywhere = KeymapCombo(nodeName: "a", binding: binding, keyPositions: [1, 2])
+        #expect(everywhere.isActive(onLayer: 0))
+        #expect(everywhere.isActive(onLayer: 4))
+
+        // An empty list is the same statement as no list at all.
+        let empty = KeymapCombo(nodeName: "b", binding: binding, keyPositions: [1, 2], layers: [])
+        #expect(empty.isActive(onLayer: 3))
+
+        let scoped = KeymapCombo(nodeName: "c", binding: binding, keyPositions: [1, 2], layers: [1, 2])
+        #expect(!scoped.isActive(onLayer: 0))
+        #expect(scoped.isActive(onLayer: 1))
+        #expect(scoped.isActive(onLayer: 2))
+        #expect(!scoped.isActive(onLayer: 3))
+    }
 }

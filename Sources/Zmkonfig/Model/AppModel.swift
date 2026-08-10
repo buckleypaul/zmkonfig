@@ -115,6 +115,20 @@ final class AppModel {
         return combos.first { $0.id == id }
     }
 
+    /// A combo's key positions as the file states them, falling back to the
+    /// numbers when there is no keymap to ask. Every view that prints a chord
+    /// goes through this, because two of them printing it differently is a bug
+    /// this project has already had.
+    func positionTokens(of combo: KeymapCombo) -> [String] {
+        keymap?.positionTokens(of: combo) ?? combo.keyPositions.map(String.init)
+    }
+
+    /// The combos that fire on one layer. `KeymapLayer.id` is the layer number,
+    /// which is what a combo's `layers` property holds.
+    func combos(onLayer id: Int) -> [KeymapCombo] {
+        combos.filter { $0.isActive(onLayer: id) }
+    }
+
     var behaviors: [KeymapBehavior] { keymap?.behaviors ?? [] }
 
     var macros: [KeymapMacro] { keymap?.macros ?? [] }
@@ -376,6 +390,16 @@ final class AppModel {
             gitStatus = nil
             self.error = AppError(title: "git status failed", error: error)
         }
+    }
+
+    /// Point the editor at one layer, and optionally one key on it. Used by the
+    /// menubar panel, which selects from outside the window. It goes through
+    /// `sidebarSelection` rather than `selectKey` on purpose: a combo may be
+    /// selected, and there a click on a key edits the combo's chord.
+    func reveal(layerID: Int, keyIndex: Int? = nil) {
+        sidebarSelection = .layer(layerID)
+        // `sidebarSelection`'s didSet clears the key, so this has to come after.
+        selectedKeyIndex = keyIndex
     }
 
     // MARK: - Editing
@@ -933,7 +957,7 @@ extension AppModel {
     /// Position tokens rather than numbers, so a chord written with `POS_*`
     /// macros is described the way the file writes it.
     private func positions(_ combo: KeymapCombo) -> String {
-        let tokens = keymap?.positionTokens(of: combo) ?? combo.keyPositions.map(String.init)
+        let tokens = positionTokens(of: combo)
         return tokens.isEmpty ? "none" : tokens.joined(separator: "+")
     }
 

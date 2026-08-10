@@ -4,10 +4,7 @@ import ZmkonfigKit
 /// The `Settings` scene. Its own root, because a settings window is a separate
 /// scene and does not inherit the main window's theme environment.
 struct SettingsRootView: View {
-    @Environment(\.colorScheme) private var colorScheme
     @Bindable var llm: LLMModel
-
-    private let themeEngine = ThemeEngine.shared
 
     var body: some View {
         TabView {
@@ -16,8 +13,7 @@ struct SettingsRootView: View {
             ClaudeSettingsView(llm: llm)
                 .tabItem { Label("Claude", systemImage: "sparkles") }
         }
-        .environment(\.theme, themeEngine.resolved(for: themeEngine.scheme(system: colorScheme)))
-        .preferredColorScheme(themeEngine.appearance.colorScheme)
+        .themedScene()
         .errorAlert($llm.error, fallbackTitle: "Keychain error")
     }
 }

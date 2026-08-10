@@ -59,6 +59,14 @@ public struct KeymapCombo: Identifiable, Sendable, Equatable {
         self.sourcePositionTokens = sourcePositionTokens
     }
 
+    /// Whether this combo fires on the given layer. A combo with no `layers`
+    /// property is live on every layer, which is ZMK's default and the reason
+    /// this is not just `layers.contains(_:)`.
+    public func isActive(onLayer layer: Int) -> Bool {
+        guard let layers, !layers.isEmpty else { return true }
+        return layers.contains(layer)
+    }
+
     /// Devicetree node names are ASCII letters, digits and `,._+-`, and start
     /// with a letter or a digit.
     public static func isValidNodeName(_ name: String) -> Bool {

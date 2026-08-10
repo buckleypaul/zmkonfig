@@ -93,6 +93,15 @@ public enum ThemeMetricToken: String, CaseIterable, Sendable {
 
     case boardMinScale
     case boardMaxScale
+    /// The floor for `BoardDensity.thumbnail` — effectively none, so a board
+    /// always fits the cell it is given.
+    case boardThumbnailMinScale
+
+    case menuBarPanelWidth
+    case menuBarPanelHeight
+    case menuBarThumbnailWidth
+    case menuBarThumbnailHeight
+    case menuBarComboListHeight
 }
 
 public enum ThemeFontToken: String, CaseIterable, Sendable {
@@ -523,6 +532,13 @@ extension Theme {
 
             .boardMinScale: 0.4,
             .boardMaxScale: 1.6,
+            .boardThumbnailMinScale: 0.05,
+
+            .menuBarPanelWidth: 720,
+            .menuBarPanelHeight: 760,
+            .menuBarThumbnailWidth: 310,
+            .menuBarThumbnailHeight: 132,
+            .menuBarComboListHeight: 190,
         ]),
         fonts: fontTable([
             .title: ThemeFontSpec(size: 15, weight: .semibold),

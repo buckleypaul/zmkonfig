@@ -242,7 +242,30 @@ struct WarningStrip: View {
     }
 }
 
+/// Resolves the theme for the current appearance and hands it to everything
+/// below. Every scene — the editor window, Settings, the menubar panel — needs
+/// this, because a scene does not inherit another scene's environment; this is
+/// the only place the theme is read from the engine.
+private struct ThemedScene: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    private let themeEngine = ThemeEngine.shared
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.theme, themeEngine.resolved(for: themeEngine.scheme(system: colorScheme)))
+            // Forces the appearance on the window's own controls — scrollers,
+            // pickers, text fields — which draw themselves and would otherwise
+            // stay in the system's appearance while the theme moved. Nil in
+            // auto mode, which is what leaves them following macOS.
+            .preferredColorScheme(themeEngine.appearance.colorScheme)
+    }
+}
+
 extension View {
+    /// Theme a scene root. Apply it from *outside* the view that reads the
+    /// theme: a view cannot see an environment value it sets itself.
+    func themedScene() -> some View { modifier(ThemedScene()) }
+
     /// The one way an `AppError` is put in front of the user: an alert carrying
     /// the error's own title and message, which clears it when dismissed.
     func errorAlert(_ error: Binding<AppError?>, fallbackTitle: String) -> some View {
