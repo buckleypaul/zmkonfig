@@ -65,12 +65,16 @@ final class AppModel {
     // Selection
     /// What the sidebar has picked. A combo stays selected while the board goes
     /// on showing a layer, because picking a combo's key positions means
-    /// clicking keys on a layer.
+    /// clicking keys on a layer — which one is ``showLayer(forCombo:)``.
     var sidebarSelection: SidebarSelection? {
         didSet {
             guard sidebarSelection != oldValue else { return }
             selectedKeyIndex = nil
-            if case .layer(let id) = sidebarSelection { selectedLayerID = id }
+            switch sidebarSelection {
+            case .layer(let id): selectedLayerID = id
+            case .combo(let id): showLayer(forCombo: id)
+            case .behavior, .macro, .none: break
+            }
         }
     }
     private(set) var selectedLayerID: Int?
@@ -81,6 +85,30 @@ final class AppModel {
     /// and the inspector on another. ``selectKey(_:)`` and ``reveal(layerID:keyIndex:)``
     /// are the ways in, and both go through ``sidebarSelection``.
     private(set) var selectedKeyIndex: Int?
+
+    /// Puts the board on the layer a newly selected combo is picked against.
+    ///
+    /// A combo's chord is chosen by clicking keys, so the layer showing is the
+    /// one whose keycaps the user reads the chord off. A combo scoped to "all
+    /// layers" fires everywhere, and the default layer is where its positions
+    /// mean what people expect — so selecting one comes back there rather than
+    /// leaving the board wherever it happened to be. A combo scoped to
+    /// particular layers only fires on those, and any other layer would label
+    /// its chord with keys the combo has nothing to do with.
+    private func showLayer(forCombo comboID: KeymapCombo.ID) {
+        guard let combo = combos.first(where: { $0.id == comboID }) else { return }
+        guard let scope = combo.layers, !scope.isEmpty else {
+            selectedLayerID = layers.first?.id
+            return
+        }
+        // Already on one of the combo's own layers: stay there, so stepping
+        // through combos scoped the same way does not keep moving the board.
+        if let current = selectedLayerID, scope.contains(current) { return }
+        // A scoped layer that no longer exists names nothing to draw; the
+        // default layer is the fallback, as it is everywhere else here.
+        selectedLayerID = scope.first { id in layers.contains { $0.id == id } }
+            ?? layers.first?.id
+    }
 
     /// The single authority for what the Edit tab shows, so the inspector
     /// cannot disagree with the board.
