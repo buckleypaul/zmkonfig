@@ -926,7 +926,49 @@ final class AppModel {
             await loadKeymapAndLayout()
             await refreshStatus()
         } catch {
+            // Refresh first, then report. The status is what tells Rebase and
+            // Discard whether they apply, so a failed pull is exactly when it
+            // has to be re-read — and re-reading before the assignment keeps
+            // the pull's own message on screen rather than letting a status
+            // read that failed for the same reason overwrite it.
+            await refreshStatus()
             self.error = AppError(title: "git pull failed", error: error)
+        }
+    }
+
+    /// Replays local commits on top of the upstream, for the case a
+    /// fast-forward cannot reach: commits on both sides.
+    func pullRebase() async {
+        guard let git else { return }
+        busyMessage = "Rebasing…"
+        defer { busyMessage = nil }
+        do {
+            let upstream = try? await git.upstream()
+            try await git.pullRebase()
+            await loadKeymapAndLayout()
+            await refreshStatus()
+            notice = "Rebased onto \(upstream ?? "the upstream")"
+        } catch {
+            await refreshStatus()
+            self.error = AppError(title: "git rebase failed", error: error)
+        }
+    }
+
+    /// Throws away every uncommitted change to tracked files and re-reads the
+    /// keymap from disk. Unsaved edits in the editor go with them — the reload
+    /// is what makes the board agree with the file again.
+    func discardLocalChanges() async {
+        guard let git else { return }
+        busyMessage = "Discarding local changes…"
+        defer { busyMessage = nil }
+        do {
+            try await git.discardLocalChanges()
+            await loadKeymapAndLayout()
+            await refreshStatus()
+            notice = "Discarded local changes"
+        } catch {
+            await refreshStatus()
+            self.error = AppError(title: "Could not discard local changes", error: error)
         }
     }
 }

@@ -16,15 +16,34 @@ public struct GitStatus: Sendable, Equatable {
     /// contents are all untracked collapses to one `dir/` entry, exactly as
     /// `git status` reports it.
     public let changedFiles: [String]
+    /// The subset of ``changedFiles`` git has never been told about. Kept
+    /// apart because ``Git/discardLocalChanges()`` restores tracked files and
+    /// leaves these alone, and a dialog that says "this is thrown away" has to
+    /// list the files that actually are.
+    public let untrackedFiles: [String]
     /// Commits on this branch that the upstream does not have. Zero when there is no upstream.
     public let ahead: Int
     /// Commits on the upstream that this branch does not have. Zero when there is no upstream.
     public let behind: Int
 
-    public init(branch: String, isDirty: Bool, changedFiles: [String], ahead: Int, behind: Int = 0) {
+    /// Tracked files with uncommitted changes: what a hard reset would undo.
+    public var trackedChangedFiles: [String] {
+        let untracked = Set(untrackedFiles)
+        return changedFiles.filter { !untracked.contains($0) }
+    }
+
+    public init(
+        branch: String,
+        isDirty: Bool,
+        changedFiles: [String],
+        untrackedFiles: [String] = [],
+        ahead: Int,
+        behind: Int = 0
+    ) {
         self.branch = branch
         self.isDirty = isDirty
         self.changedFiles = changedFiles
+        self.untrackedFiles = untrackedFiles
         self.ahead = ahead
         self.behind = behind
     }
@@ -39,6 +58,10 @@ public enum GitError: Error, CustomStringConvertible, Equatable {
     case divergedFromUpstream(branch: String)
     /// `pull` would overwrite local edits.
     case uncommittedChanges
+    /// A rebase stopped on a conflict and was rolled back; the tree is untouched.
+    case rebaseConflicted(branch: String)
+    /// An operation that needs a HEAD to work from, in a repository with no commits.
+    case noCommits
     case malformedStatus(String)
 
     public var description: String {
@@ -55,6 +78,12 @@ public enum GitError: Error, CustomStringConvertible, Equatable {
             "`\(branch)` has diverged from its upstream. Reconcile the histories manually, then try again."
         case .uncommittedChanges:
             "Local changes would be overwritten by the pull. Commit or stash them first."
+        case .rebaseConflicted(let branch):
+            "Replaying `\(branch)` onto its upstream hit a conflict, so the rebase was rolled "
+                + "back and nothing changed. Resolve it in a terminal, or discard the local "
+                + "commits and pull again."
+        case .noCommits:
+            "The repository has no commits yet, so there is nothing to restore the working tree to."
         case .malformedStatus(let record):
             "Could not parse git status record: \(record)"
         }
@@ -230,6 +259,44 @@ public struct Git: Sendable {
         throw ShellError(command: "git pull --ff-only", result: result)
     }
 
+    /// Replays the branch's local commits on top of its upstream: `pull --rebase`,
+    /// for the diverged case a fast-forward cannot reach.
+    ///
+    /// Two things are refused rather than attempted. A dirty working tree,
+    /// because rebasing over uncommitted edits is how they get lost — the
+    /// caller is told to discard or commit first. And a conflict: the app has
+    /// no conflict-resolution UI, so a working copy parked mid-rebase is a trap
+    /// the user would need a terminal to escape. It is rolled back instead, and
+    /// the branch ends where it started.
+    public func pullRebase() async throws {
+        let before = try await status()
+        if before.isDirty { throw GitError.uncommittedChanges }
+
+        let result = try await run(["pull", "--rebase"])
+        guard !result.ok else { return }
+
+        // `rebase --abort` only succeeds when a rebase is actually in progress,
+        // so its exit status is also how a conflict is told apart from a
+        // failure that never started one — no upstream, no network, a host key
+        // the agent would not vouch for. Those keep git's own message.
+        guard try await run(["rebase", "--abort"]).ok else {
+            throw ShellError(command: "git pull --rebase", result: result)
+        }
+        throw GitError.rebaseConflicted(branch: before.branch)
+    }
+
+    /// Puts tracked files back to HEAD, throwing away every uncommitted change
+    /// to them. Unrecoverable, and meant to be: it is the way out of a working
+    /// copy whose local edits are blocking a pull.
+    ///
+    /// Untracked files are deliberately left where they are. A ZMK checkout
+    /// carries a west workspace and firmware artifacts beside the config, and
+    /// "undo my edits" is not a licence to delete a hundred megabytes of Zephyr.
+    public func discardLocalChanges() async throws {
+        guard try await hasCommits() else { throw GitError.noCommits }
+        try await checked(["reset", "--hard", "HEAD"])
+    }
+
     /// Updates remote-tracking refs. Does not touch the working tree, so it is
     /// always safe to call over uncommitted edits.
     public func fetch() async throws {
@@ -262,6 +329,7 @@ public struct Git: Sendable {
         var ahead = 0
         var behind = 0
         var changedFiles: [String] = []
+        var untrackedFiles: [String] = []
 
         var index = 0
         while index < records.count {
@@ -296,7 +364,9 @@ public struct Git: Sendable {
             case "u":
                 changedFiles.append(try Self.path(in: record, after: 10))
             case "?":
-                changedFiles.append(String(record.dropFirst(2)))
+                let path = String(record.dropFirst(2))
+                changedFiles.append(path)
+                untrackedFiles.append(path)
             case "!":
                 break  // ignored file; not a change
             default:
@@ -308,6 +378,7 @@ public struct Git: Sendable {
             branch: branch,
             isDirty: !changedFiles.isEmpty,
             changedFiles: changedFiles,
+            untrackedFiles: untrackedFiles,
             ahead: ahead,
             behind: behind
         )
