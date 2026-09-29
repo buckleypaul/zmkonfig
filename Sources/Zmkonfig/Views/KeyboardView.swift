@@ -49,9 +49,15 @@ struct KeyboardView: View {
                 max: theme.metric(.boardMaxScale)
             )
 
+            // Below the editor's own floor the board is a thumbnail: a 2pt
+            // reveal and a 4pt shadow land on a fraction of a pixel each and
+            // come back as mud, so those caps are drawn flat. The editor is
+            // clamped to `boardMinScale`, so it always sculpts.
+            let sculpted = scale >= theme.metric(.boardMinScale)
+
             ZStack(alignment: .topLeading) {
                 ForEach(Array(layout.enumerated()), id: \.offset) { index, position in
-                    keycap(index: index, position: position)
+                    keycap(index: index, position: position, sculpted: sculpted)
                         .frame(width: position.width * unit, height: position.height * unit)
                         .rotationEffect(
                             .degrees(position.r ?? 0),
@@ -71,16 +77,22 @@ struct KeyboardView: View {
     }
 
     @ViewBuilder
-    private func keycap(index: Int, position: KeyPosition) -> some View {
+    private func keycap(index: Int, position: KeyPosition, sculpted: Bool) -> some View {
         let binding = bindings.indices.contains(index) ? bindings[index] : nil
         KeycapView(
             label: binding.map {
                 BindingLabel.make($0, behavior: behaviors.behavior(for: $0.behavior), layers: layers)
             },
-            source: binding?.text,
+            // A position with no binding at all is drawn as a ghost, which has
+            // no kit; `.mods` is the same answer the empty behaviors give.
+            kit: binding.map(KeycapKit.of) ?? .mods,
             isSelected: selectedIndex == index,
             isHighlighted: highlightedIndices.contains(index),
-            inset: theme.metric(.keyInset)
+            isSculpted: sculpted,
+            inset: theme.metric(.keyInset),
+            // `&mo`, `&lt`, `&tog`, `&sl`, `&to` — nil for anything else, or
+            // for a target this editor cannot resolve to a number.
+            targetLayerID: binding.flatMap(KeycapKit.layerTarget(of:))
         )
         .contentShape(Rectangle())
         .onTapGesture { onSelect?(index) }
@@ -130,63 +142,133 @@ struct KeyboardView: View {
     }
 }
 
+/// One key, drawn as the object it is: a top face standing on a wall, with a
+/// shadow on the plate under it.
+///
+/// The extrusion is two rounded rectangles, not a gradient. The wall fills the
+/// cap's whole footprint; the top face is the same rectangle inset by
+/// `keycapTopInset` and lifted by `keycapTopShift`, so the reveal along the
+/// bottom edge is deeper than the one along the top and the eye reads height.
+/// The legends ride up with the face they are printed on.
 struct KeycapView: View {
     @Environment(\.theme) private var theme
 
     let label: BindingLabel.Label?
-    let source: String?
+    let kit: KeycapKit
     let isSelected: Bool
     let isHighlighted: Bool
+    /// False when the board is drawn too small for the sculpt to survive being
+    /// scaled down — see `KeyboardView`. Such a cap is a flat outlined
+    /// rectangle, which is what a thumbnail wants anyway.
+    let isSculpted: Bool
     let inset: CGFloat
+    /// The layer this key switches to — `&mo`, `&lt`, `&tog`, `&sl`, `&to` —
+    /// or nil for a key that does not target one. Nil is also what a target
+    /// this editor cannot resolve to a number looks like; such a key is drawn
+    /// exactly as an ordinary mod, because there is no layer to point at.
+    var targetLayerID: Int? = nil
 
     var body: some View {
-        let radius = theme.metric(.keyCornerRadius)
+        legends
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background { cap }
+            // Behind the cap, so only the bleed shows: the light is under the
+            // key, not on it. Layout-neutral, so the blur spills across the
+            // gap onto the plate instead of pushing the board around.
+            .background { halo }
+            .padding(inset)
+    }
+
+    private var legends: some View {
         VStack(spacing: theme.metric(.keycapLabelSpacing)) {
             if let hold = label?.hold {
                 Text(hold)
                     .font(theme.font(.keycapSecondary))
-                    .foregroundStyle(theme.color(.keycapSubtext))
+                    .foregroundStyle(layerAccent ?? theme.color(.keycapSubtext))
                     .lineLimit(1)
                     .minimumScaleFactor(theme.metric(.keycapSecondaryMinScale))
             }
             Text(label?.tap ?? "—")
                 .font(theme.font(.keycapPrimary))
-                .foregroundStyle(textColor)
+                .foregroundStyle(layerAccent ?? textColor)
                 .lineLimit(1)
                 .minimumScaleFactor(theme.metric(.keycapMinScale))
         }
         .padding(.horizontal, theme.metric(.keycapPadding))
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: radius).fill(fillColor)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: radius)
-                .strokeBorder(strokeColor, lineWidth: strokeWidth)
-        )
-        .padding(inset)
+        .offset(y: isFlat ? 0 : -theme.metric(.keycapTopShift))
+    }
+
+    @ViewBuilder
+    private var cap: some View {
+        let radius = theme.metric(.keyCornerRadius)
+        let shape = RoundedRectangle(cornerRadius: radius)
+        if isFlat {
+            shape
+                .fill(topFill)
+                .overlay(shape.strokeBorder(theme.color(.keycapStroke), lineWidth: theme.metric(.borderWidth)))
+        } else {
+            let topInset = theme.metric(.keycapTopInset)
+            shape
+                .fill(theme.color(.keycapSide))
+                // The cap's silhouette is the wall's, so this is the whole of
+                // the cap's shadow — and the only shadow in the app.
+                .shadow(
+                    color: theme.color(.keycapShadow),
+                    radius: theme.metric(.keycapShadowRadius),
+                    x: 0,
+                    y: theme.metric(.keycapShadowYOffset)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: max(radius - topInset, 1))
+                        .fill(topFill)
+                        .padding(topInset)
+                        .offset(y: -theme.metric(.keycapTopShift))
+                }
+        }
+    }
+
+    @ViewBuilder
+    private var halo: some View {
+        if let glow = glowColor {
+            RoundedRectangle(cornerRadius: theme.metric(.keyCornerRadius))
+                .fill(glow)
+                .blur(radius: theme.metric(.underglowBlur))
+        }
     }
 
     /// A key is "quiet" when it holds nothing: `&trans`, `&none`, or a position
     /// the current layer has no binding for at all.
     private var isQuiet: Bool { label?.kind != .normal }
 
-    private var fillColor: Color {
+    /// Drawn as a ghosted outline rather than an object, for either of two
+    /// reasons: a cap with nothing on it is a hole in the keyset and not a key,
+    /// so the board's raised silhouette is only ever the keys that are really
+    /// there; and a board too small to sculpt has nowhere to put the reveal.
+    private var isFlat: Bool { isQuiet || !isSculpted }
+
+    private var topFill: Color {
         if isSelected { return theme.color(.keycapSelectedFill) }
-        return isQuiet ? theme.color(.keycapEmptyFill) : theme.color(.keycapFill)
+        if isQuiet { return theme.color(.keycapEmptyFill) }
+        return theme.color(kit == .mods ? .keycapModFill : .keycapFill)
     }
 
     private var textColor: Color {
         isQuiet ? theme.color(.keycapEmptyText) : theme.color(.keycapText)
     }
 
-    private var strokeColor: Color {
-        if isSelected { return theme.color(.keycapSelectedStroke) }
-        if isHighlighted { return theme.color(.keycapHighlightStroke) }
-        return theme.color(.keycapStroke)
+    /// The layer this key switches to, drawn as a color rather than a
+    /// position — nil for anything that is not a layer-switching binding.
+    private var layerAccent: Color? {
+        targetLayerID.map(theme.layerAccent)
     }
 
-    private var strokeWidth: CGFloat {
-        (isSelected || isHighlighted) ? theme.metric(.borderWidthSelected) : theme.metric(.borderWidth)
+    private var glowColor: Color? {
+        // A layer-switch key's own halo points at where it goes, not at the
+        // generic "this is selected" blue every other key uses.
+        if isSelected {
+            return targetLayerID.map { theme.layerAccentGlow($0) } ?? theme.color(.underglow)
+        }
+        if isHighlighted { return theme.color(.keycapHighlight) }
+        return nil
     }
 }

@@ -188,6 +188,117 @@ struct BindingSemanticsTests {
         #expect(BindingLabel.keyNames(for: ["0"], on: nil, layers: [], behaviors: index) == ["0"])
     }
 
+    // MARK: - Which keycap kit a binding belongs to
+
+    @Test("A plain key press of a letter, digit or printable character is an alpha")
+    func alphasAreTheKeysThatType() {
+        for token in ["A", "Q", "Z", "N1", "N0", "NUMBER_7", "COMMA", "DOT", "FSLH", "SEMI", "SQT", "MINUS", "GRAVE"] {
+            let binding = KeyBinding(behavior: "&kp", params: [BindingParam(value: token)])
+            #expect(KeycapKit.of(binding) == .alpha, "&kp \(token) should be an alpha")
+        }
+    }
+
+    @Test("Modifiers, the nav cluster, the editing keys and unknown codes are mods")
+    func everythingElseIsAMod() {
+        let tokens = [
+            "LEFT_SHIFT", "LCTRL", "RIGHT_GUI", "LALT", "CAPS",
+            "LEFT", "RIGHT", "UP", "DOWN", "HOME", "END", "PG_UP", "PG_DN",
+            "BSPC", "DEL", "RET", "ENTER", "SPACE", "TAB", "ESC",
+            "F5", "KP_N1", "C_MUTE", "PSCRN", "SOME_FUTURE_KEYCODE",
+        ]
+        for token in tokens {
+            let binding = KeyBinding(behavior: "&kp", params: [BindingParam(value: token)])
+            #expect(KeycapKit.of(binding) == .mods, "&kp \(token) should be a mod")
+        }
+    }
+
+    /// The rule is about the behavior first: `&mt LSHIFT A` types an `A` but it
+    /// is a hold-tap, and a keyset would not put it in the alpha colour.
+    @Test("Any behavior that is not a plain key press is a mod")
+    func behaviorsOtherThanKeyPressAreMods() {
+        let bindings = [
+            KeyBinding(behavior: "&mo", params: [BindingParam(value: "1")]),
+            KeyBinding(behavior: "&tog", params: [BindingParam(value: "2")]),
+            KeyBinding(behavior: "&lt", params: [BindingParam(value: "1"), BindingParam(value: "SPACE")]),
+            KeyBinding(behavior: "&mt", params: [BindingParam(value: "LSHIFT"), BindingParam(value: "A")]),
+            KeyBinding(behavior: "&hml", params: [BindingParam(value: "LGUI"), BindingParam(value: "A")]),
+            KeyBinding(behavior: "&bt", params: [BindingParam(value: "BT_CLR")]),
+            KeyBinding(behavior: "&trans"),
+            KeyBinding(behavior: "&none"),
+            KeyBinding(behavior: "&kp"),
+        ]
+        for binding in bindings {
+            #expect(KeycapKit.of(binding) == .mods, "\(binding.text) should be a mod")
+        }
+    }
+
+    @Test("A modifier-wrapped keycode is a shortcut, not an alpha")
+    func wrappedKeycodesAreMods() {
+        let binding = KeyBinding(
+            behavior: "&kp",
+            params: [BindingParam(value: "LC", params: [BindingParam(value: "C")])]
+        )
+        #expect(KeycapKit.of(binding) == .mods)
+    }
+
+    /// The kit is decided by structure, so a token gaining a glyph must not
+    /// move it between the two colours — the same split `ModifierFunction`
+    /// keeps between what a binding means and what it says.
+    @Test("Every printable-character token this app can draw is an alpha")
+    func printableTokensAgreeWithTheirGlyphs() {
+        for token in KeycapKit.alphaPunctuation {
+            #expect(KeycapKit.of(keycode: token) == .alpha, "\(token) fell out of the alpha kit")
+            // Every one of them draws as a single character, which is what
+            // "printable" means here.
+            let drawn = BindingLabel.prettyKeycode(token)
+            #expect(drawn.count == 1, "\(token) draws as \"\(drawn)\", which is not one character")
+        }
+    }
+
+    // MARK: - Which layer a binding switches to
+
+    @Test("The layer-switching behaviors resolve their first parameter as a layer id")
+    func layerTargetResolvesTheFirstParameter() {
+        let cases: [(KeyBinding, Int?)] = [
+            (KeyBinding(behavior: "&mo", params: [BindingParam(value: "1")]), 1),
+            (KeyBinding(behavior: "&tog", params: [BindingParam(value: "2")]), 2),
+            (KeyBinding(behavior: "&sl", params: [BindingParam(value: "3")]), 3),
+            (KeyBinding(behavior: "&to", params: [BindingParam(value: "0")]), 0),
+            // `&lt` takes a layer and then a keycode; only the layer counts.
+            (KeyBinding(behavior: "&lt", params: [BindingParam(value: "4"), BindingParam(value: "SPACE")]), 4),
+        ]
+        for (binding, expected) in cases {
+            #expect(KeycapKit.isLayerSwitch(binding), "\(binding.text) should be a layer switch")
+            #expect(KeycapKit.layerTarget(of: binding) == expected, "\(binding.text)")
+        }
+    }
+
+    @Test("A binding that does not switch layers, or names one this editor cannot resolve, targets nothing")
+    func layerTargetIsNilOtherwise() {
+        let notLayerSwitching = [
+            KeyBinding(behavior: "&kp", params: [BindingParam(value: "A")]),
+            KeyBinding(behavior: "&mt", params: [BindingParam(value: "LSHIFT"), BindingParam(value: "A")]),
+            KeyBinding(behavior: "&trans"),
+            KeyBinding(behavior: "&mo"), // declared with no parameter at all
+        ]
+        for binding in notLayerSwitching {
+            #expect(KeycapKit.layerTarget(of: binding) == nil, "\(binding.text)")
+        }
+
+        // A layer number never carries parameters of its own, so this is not a
+        // switch to layer 1 — it is something the editor does not understand.
+        let nested = KeyBinding(
+            behavior: "&mo",
+            params: [BindingParam(value: "FOO", params: [BindingParam(value: "1")])]
+        )
+        #expect(KeycapKit.layerTarget(of: nested) == nil)
+
+        // A `#define LAYER_NAV 1` style token this editor cannot resolve.
+        let named = KeyBinding(behavior: "&mo", params: [BindingParam(value: "LAYER_NAV")])
+        #expect(KeycapKit.isLayerSwitch(named))
+        #expect(KeycapKit.layerTarget(of: named) == nil)
+    }
+
     // MARK: - Reshaping a binding
 
     private static let keyPress = ZMKBehavior(code: "&kp", name: "Key press", params: [.code])

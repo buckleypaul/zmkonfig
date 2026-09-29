@@ -27,10 +27,14 @@ struct SaveSheet: View {
             Divider()
             if explain.changes.isRunning || explain.changes.failure != nil || hasReview {
                 review(subject: subject, isTruncated: isTruncated)
-                Divider()
             }
+            // A rounded, bordered card rather than a flat panel run edge to
+            // edge: every other surface transition in the app says "this is a
+            // separate thing" with elevation, not a hairline, and the diff was
+            // the one place still doing it the old way.
             DiffView(diff: model.pendingDiff)
-            Divider()
+                .outlinedCard()
+                .padding(theme.metric(.spacingM))
             footer
         }
         .frame(width: theme.metric(.sheetWidthLarge), height: theme.metric(.sheetHeightLarge))

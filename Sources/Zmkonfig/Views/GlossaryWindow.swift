@@ -53,6 +53,12 @@ struct GlossaryWindow: View {
                 }
             }
             .listStyle(.sidebar)
+            // `.sidebar` paints its own translucent backing, which is the
+            // system's own grey rather than the flavour's — hidden so the
+            // window reads as the same Catppuccin surface the empty state
+            // above already draws.
+            .scrollContentBackground(.hidden)
+            .background(theme.color(.sidebarBackground))
         }
     }
 
@@ -77,14 +83,18 @@ struct GlossaryWindow: View {
     private var detail: some View {
         if let term = model.selectedTerm, let entry = glossary.entry(for: term) {
             ScrollView {
-                VStack(alignment: .leading, spacing: theme.metric(.spacingL)) {
-                    GlossaryCard(entry: entry)
-                    if let values = entry.values, !values.isEmpty {
-                        valueList(values)
+                // The same card language every other panel's content sits in
+                // — a bordered, rounded block on the pane's own surface —
+                // rather than the entry running loose to the window's edges.
+                Card {
+                    VStack(alignment: .leading, spacing: theme.metric(.spacingL)) {
+                        GlossaryCard(entry: entry)
+                        if let values = entry.values, !values.isEmpty {
+                            valueList(values)
+                        }
+                        footer(entry)
                     }
-                    footer(entry)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(theme.metric(.spacingL))
             }
             .background(theme.color(.panelBackground))

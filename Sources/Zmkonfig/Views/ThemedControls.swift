@@ -52,6 +52,11 @@ struct SheetTitle: View {
 
 struct Card<Content: View>: View {
     @Environment(\.theme) private var theme
+    /// Which surface the card is drawn on. The default is the panel surface a
+    /// card in the inspector wants; a card on the bare window — the menubar
+    /// panel's layer thumbnails — names the content surface so it reads as
+    /// raised off the desk rather than level with it.
+    var surface: ThemeColorToken = .panelBackground
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -60,12 +65,63 @@ struct Card<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: theme.metric(.cornerRadiusMedium))
-                    .fill(theme.color(.panelBackground))
+                    .fill(theme.color(surface))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: theme.metric(.cornerRadiusMedium))
                     .strokeBorder(theme.color(.border), lineWidth: theme.metric(.borderWidth))
             )
+    }
+}
+
+/// The one way anything in this app becomes a rounded surface: filled with a
+/// surface color, clipped to the corner and outlined in `border`.
+///
+/// Clipped, not just filled: these hold content that runs to their edges — a
+/// list, a status strip, a diff — and the corners have to cut it.
+///
+/// `surface` is optional because the diff card sits on content that already
+/// paints its own background; it wants the corner and the outline and no fill.
+private struct RoundedSurface: ViewModifier {
+    @Environment(\.theme) private var theme
+    let surface: ThemeColorToken?
+    let radius: ThemeMetricToken
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: theme.metric(radius))
+        return content
+            .background { if let surface { shape.fill(theme.color(surface)) } }
+            .clipShape(shape)
+            .overlay(
+                shape.strokeBorder(theme.color(.border), lineWidth: theme.metric(.borderWidth))
+            )
+    }
+}
+
+extension View {
+    /// One of the window's floating panes.
+    ///
+    /// The window itself is the desk — `windowBackground`, the darkest surface
+    /// in the flavour — and each pane is a rounded card lying on it with
+    /// `paneGutter` of bare desk all around. That gap is the whole design: two
+    /// panes are told apart by the space between them, never by a hairline they
+    /// share, so no card ever draws an edge that is also its neighbour's.
+    func paneCard(_ surface: ThemeColorToken) -> some View {
+        frame(maxWidth: .infinity, maxHeight: .infinity)
+            .modifier(RoundedSurface(surface: surface, radius: .cornerRadiusLarge))
+    }
+
+    /// The plate the keys mount into: a shallow well set into a pane card, one
+    /// step back down the surface ramp from the card around it. Callers pad
+    /// their own content — the padding belongs inside the well, not around it.
+    func boardWell() -> some View {
+        modifier(RoundedSurface(surface: .boardBackground, radius: .cornerRadiusMedium))
+    }
+
+    /// A card with no fill of its own: the corner and the outline only, for
+    /// content that already paints its own background.
+    func outlinedCard() -> some View {
+        modifier(RoundedSurface(surface: nil, radius: .cornerRadiusMedium))
     }
 }
 
@@ -111,6 +167,45 @@ struct StatusDot: View {
     var body: some View {
         let size = theme.metric(.statusDotSize)
         Circle().fill(color).frame(width: size, height: size)
+    }
+}
+
+/// A layer's identity color as a vertical bar, drawn the height of whatever it
+/// sits beside. It names *which* layer this is, not that the layer is chosen,
+/// so it is drawn whether or not the row it marks is selected — and it is one
+/// view so the sidebar row and the board's eyebrow cannot drift apart.
+struct LayerAccentBar: View {
+    @Environment(\.theme) private var theme
+    let layerID: Int
+
+    var body: some View {
+        let width = theme.metric(.layerAccentBarWidth)
+        // Half the width, so the ends round off completely.
+        RoundedRectangle(cornerRadius: width / 2)
+            .fill(theme.layerAccent(layerID))
+            .frame(width: width)
+    }
+}
+
+/// The mark a combo that switches layers wears: a dot in the target layer's own
+/// accent — the same color that layer's bar carries — so a list of combos reads
+/// as "which layer does this go to" at a glance. A combo that does not switch
+/// layers, or that names one through a `#define` this editor cannot resolve,
+/// draws nothing.
+///
+/// The tooltip names the layer the way a keycap does, through
+/// ``BindingLabel/layerLabel(_:layers:)``, rather than looking the number up
+/// separately — the board and the sidebar must agree on what a layer is called.
+struct LayerTargetDot: View {
+    @Environment(\.theme) private var theme
+    let binding: KeyBinding
+    let layers: [KeymapLayer]
+
+    var body: some View {
+        if let target = KeycapKit.layerTarget(of: binding), let param = binding.params.first {
+            StatusDot(color: theme.layerAccent(target))
+                .help("Switches to \(BindingLabel.layerLabel(param, layers: layers))")
+        }
     }
 }
 

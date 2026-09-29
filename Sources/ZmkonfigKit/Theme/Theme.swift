@@ -22,15 +22,46 @@ public enum ThemeColorToken: String, CaseIterable, Sendable {
     case accent
     case accentSoft
 
+    /// The top face of an alpha cap.
     case keycapFill
+    /// The top face of a modifier, navigation or thumb key — the mods kit.
+    case keycapModFill
+    /// The extruded side wall a cap's top face sits on. Darker than either top
+    /// face in both flavours: it is the whole of the cap's edge.
+    case keycapSide
+    /// The one shadow in the app, cast by a cap onto the plate. Carries its own
+    /// alpha, so it is written as an eight-digit hex.
+    case keycapShadow
     case keycapStroke
     case keycapText
     case keycapSubtext
     case keycapEmptyFill
     case keycapEmptyText
     case keycapSelectedFill
-    case keycapSelectedStroke
-    case keycapHighlightStroke
+    /// The halo under the selected cap. Only the board ever lights up.
+    case underglow
+    /// The halo under a cap the rest of the UI is pointing at — a combo's key
+    /// positions, while the combo is being edited.
+    case keycapHighlight
+
+    /// Catppuccin's 14-accent rainbow, used only for layer identity: layer `N`
+    /// draws in `layerAccent(N % 14)`. Nowhere else in the app assigns meaning
+    /// by picking one of these on its own — read them through
+    /// ``ResolvedTheme/layerAccent(_:)`` so the index math lives in one place.
+    case layerAccent0
+    case layerAccent1
+    case layerAccent2
+    case layerAccent3
+    case layerAccent4
+    case layerAccent5
+    case layerAccent6
+    case layerAccent7
+    case layerAccent8
+    case layerAccent9
+    case layerAccent10
+    case layerAccent11
+    case layerAccent12
+    case layerAccent13
 
     case success
     case warning
@@ -52,17 +83,37 @@ public enum ThemeMetricToken: String, CaseIterable, Sendable {
     case keyUnit
     case keyInset
     case keyCornerRadius
+    /// How far the top face of a cap is inset from its side wall — the width of
+    /// the reveal down the left and right edges.
+    case keycapTopInset
+    /// How far the top face is lifted above centre. It is what makes the
+    /// bottom reveal deeper than the top one, which is what reads as height
+    /// rather than as a frame.
+    case keycapTopShift
+    case keycapShadowRadius
+    case keycapShadowYOffset
+    /// How far a selected cap's halo bleeds out from under it.
+    case underglowBlur
 
     case cornerRadiusSmall
     case cornerRadiusMedium
+    /// The radius of a pane card — the sidebar, the content pane, the
+    /// inspector — and of anything else the size of a whole panel.
+    case cornerRadiusLarge
 
     case borderWidth
-    case borderWidthSelected
 
     case spacingXS
     case spacingS
     case spacingM
     case spacingL
+
+    /// The gap of bare window background left between two pane cards, and
+    /// between a card and the window edge. This is what makes the panes read
+    /// as separate objects, so it is never zero.
+    case paneGutter
+    /// The inset from a pane card's edge to its content.
+    case panePadding
 
 
     case sidebarMinWidth
@@ -70,7 +121,6 @@ public enum ThemeMetricToken: String, CaseIterable, Sendable {
     case sidebarMaxWidth
 
     case contentMinWidth
-    case contentIdealWidth
 
     case inspectorMinWidth
     case inspectorIdealWidth
@@ -89,6 +139,10 @@ public enum ThemeMetricToken: String, CaseIterable, Sendable {
     case keycapSecondaryMinScale
 
     case statusDotSize
+    /// The width of the vertical bar that carries a layer's identity color —
+    /// beside its sidebar row, beside the board's own eyebrow. Its corner
+    /// radius is half this, so the ends round off fully.
+    case layerAccentBarWidth
     case numericFieldWidth
     /// Room to leave at the trailing edge of a scrolling list for the overlay
     /// scroller, which AppKit draws on top of the content. A control flush to
@@ -374,6 +428,56 @@ public struct ResolvedTheme: Equatable, Sendable {
     public func color(_ token: ThemeColorToken) -> Color { colors[token] ?? .primary }
     public func metric(_ token: ThemeMetricToken) -> CGFloat { metrics[token] ?? 0 }
     public func font(_ token: ThemeFontToken) -> Font { fonts[token] ?? .body }
+
+    /// A layer's identity color, fixed by `index % 14` — layer 0 and layer 14
+    /// draw the same accent. Reordering layers changes what color a given
+    /// layer gets; that is accepted, because the accent names a position in
+    /// the rainbow, not the layer itself.
+    public func layerAccent(_ index: Int) -> Color {
+        color(Self.layerAccentTokens[Self.wrappedLayerIndex(index)])
+    }
+
+    /// The same accent pulled down to a low-opacity wash — meant for a
+    /// background behind other content, never for text or a mark on its own,
+    /// so it can never read as a full-surface fill. The opacity is fixed here
+    /// rather than passed in: it is what makes that true, and a caller free to
+    /// raise it is a caller free to make a row unreadable.
+    public func layerAccentSoft(_ index: Int) -> Color {
+        layerAccent(index).opacity(Self.softWashOpacity)
+    }
+
+    /// The accent at underglow strength — for a selected layer-switch key's
+    /// own halo, which stands in for ``ThemeColorToken/underglow`` rather than
+    /// sitting beside it, so it wants the same rough intensity, not the soft
+    /// wash a background wants.
+    ///
+    /// A blurred halo shows mostly at its edge, where the blur has already
+    /// diluted it — so a hue that is dark to begin with (red, mauve) has less
+    /// margin than a light one (yellow, sky) before it reads as no glow at
+    /// all rather than a dim one. 0.8 is the blanket opacity that keeps the
+    /// darkest accents legible without the lighter ones turning glaring — one
+    /// value for every hue, which is why it is not a parameter.
+    public func layerAccentGlow(_ index: Int) -> Color {
+        layerAccent(index).opacity(Self.glowOpacity)
+    }
+
+    private static let softWashOpacity = 0.16
+    private static let glowOpacity = 0.8
+
+    /// `%` on a negative index returns a negative remainder in Swift, and a
+    /// layer id is not guaranteed positive by anything at this layer — so this
+    /// folds it back into the accent table's own range instead of trusting the
+    /// caller.
+    private static func wrappedLayerIndex(_ index: Int) -> Int {
+        let remainder = index % layerAccentTokens.count
+        return remainder < 0 ? remainder + layerAccentTokens.count : remainder
+    }
+
+    private static let layerAccentTokens: [ThemeColorToken] = [
+        .layerAccent0, .layerAccent1, .layerAccent2, .layerAccent3, .layerAccent4,
+        .layerAccent5, .layerAccent6, .layerAccent7, .layerAccent8, .layerAccent9,
+        .layerAccent10, .layerAccent11, .layerAccent12, .layerAccent13,
+    ]
 }
 
 // MARK: - Environment
@@ -420,12 +524,17 @@ extension Theme {
     public static let standard = Theme(
         name: "Catppuccin",
         // Latte. base #EFF1F5 · mantle #E6E9EF · crust #DCE0E8
+        //
+        // Three levels, and every surface in the app is one of them: the window
+        // is `crust` — the desk the panes lie on and the only one nothing sits
+        // behind; a pane card is `base` or `mantle`; a well set into a card is
+        // one step back down the ramp.
         light: palette([
-            .windowBackground: .hex("#EFF1F5"),
+            .windowBackground: .hex("#DCE0E8"),
             .sidebarBackground: .hex("#E6E9EF"),
             .panelBackground: .hex("#E6E9EF"),
             .contentBackground: .hex("#EFF1F5"),
-            .boardBackground: .hex("#DCE0E8"),
+            .boardBackground: .hex("#E6E9EF"),
 
             .border: .hex("#CCD0DA"),
             .separator: .hex("#BCC0CC"),
@@ -437,15 +546,28 @@ extension Theme {
             .accent: .hex("#1E66F5"),
             .accentSoft: .hex("#D8E2FD"),
 
+            // The keyset, light to dark: an alpha's top face is `base`, a mod's
+            // is `crust`, and both stand on a `surface0` wall. The plate they
+            // are mounted in is `mantle`, between the two top faces — so an
+            // alpha reads as raised off it and a mod as sunk into it, and
+            // neither needs an outline to be found.
             .keycapFill: .hex("#EFF1F5"),
+            .keycapModFill: .hex("#DCE0E8"),
+            // One rung darker than `surface0`: Latte's ramp is compressed near
+            // its light end, so a wall in `surface0` reads flush against the
+            // `mantle` well beneath it — `surface1`, the same shade
+            // `keycapStroke` already outlines a flat cap in, gives the
+            // extrusion an edge that actually separates cap from plate.
+            .keycapSide: .hex("#BCC0CC"),
+            .keycapShadow: .hex("#4C4F6940"),
             .keycapStroke: .hex("#BCC0CC"),
             .keycapText: .hex("#4C4F69"),
             .keycapSubtext: .hex("#8C8FA1"),
             .keycapEmptyFill: .hex("#E6E9EF"),
             .keycapEmptyText: .hex("#9CA0B0"),
             .keycapSelectedFill: .hex("#D8E2FD"),
-            .keycapSelectedStroke: .hex("#1E66F5"),
-            .keycapHighlightStroke: .hex("#DF8E1D"),
+            .underglow: .hex("#1E66F5B3"),
+            .keycapHighlight: .hex("#DF8E1DB3"),
 
             .success: .hex("#40A02B"),
             .warning: .hex("#DF8E1D"),
@@ -459,14 +581,32 @@ extension Theme {
 
             .badgeBackground: .hex("#CCD0DA"),
             .badgeText: .hex("#5C5F77"),
+
+            // The 14 Catppuccin accents, in the canonical layer order — chosen
+            // upstream for adjacent-hue separation, not alphabetically and not
+            // in the order Catppuccin itself lists them.
+            .layerAccent0: .hex("#7287FD"), // lavender
+            .layerAccent1: .hex("#FE640B"), // peach
+            .layerAccent2: .hex("#179299"), // teal
+            .layerAccent3: .hex("#8839EF"), // mauve
+            .layerAccent4: .hex("#40A02B"), // green
+            .layerAccent5: .hex("#04A5E5"), // sky
+            .layerAccent6: .hex("#EA76CB"), // pink
+            .layerAccent7: .hex("#DF8E1D"), // yellow
+            .layerAccent8: .hex("#209FB5"), // sapphire
+            .layerAccent9: .hex("#E64553"), // maroon
+            .layerAccent10: .hex("#D20F39"), // red
+            .layerAccent11: .hex("#1E66F5"), // blue
+            .layerAccent12: .hex("#DD7878"), // flamingo
+            .layerAccent13: .hex("#DC8A78"), // rosewater
         ]),
         // Frappé. base #303446 · mantle #292C3F · crust #232634
         dark: palette([
-            .windowBackground: .hex("#303446"),
+            .windowBackground: .hex("#232634"),
             .sidebarBackground: .hex("#292C3F"),
             .panelBackground: .hex("#292C3F"),
             .contentBackground: .hex("#303446"),
-            .boardBackground: .hex("#232634"),
+            .boardBackground: .hex("#292C3F"),
 
             .border: .hex("#414559"),
             .separator: .hex("#51576D"),
@@ -478,15 +618,21 @@ extension Theme {
             .accent: .hex("#8CAAEE"),
             .accentSoft: .hex("#3B4A6B"),
 
+            // Same keyset one flavour down: `surface0` alphas, `base` mods, a
+            // `crust` wall — darker than the `mantle` plate, so the silhouette
+            // of every cap is a step down into shadow.
             .keycapFill: .hex("#414559"),
+            .keycapModFill: .hex("#303446"),
+            .keycapSide: .hex("#232634"),
+            .keycapShadow: .hex("#2326348C"),
             .keycapStroke: .hex("#626880"),
             .keycapText: .hex("#C6D0F5"),
             .keycapSubtext: .hex("#838BA7"),
             .keycapEmptyFill: .hex("#292C3F"),
             .keycapEmptyText: .hex("#737994"),
             .keycapSelectedFill: .hex("#3B4A6B"),
-            .keycapSelectedStroke: .hex("#8CAAEE"),
-            .keycapHighlightStroke: .hex("#E5C890"),
+            .underglow: .hex("#8CAAEECC"),
+            .keycapHighlight: .hex("#E5C890CC"),
 
             .success: .hex("#A6D189"),
             .warning: .hex("#E5C890"),
@@ -500,22 +646,47 @@ extension Theme {
 
             .badgeBackground: .hex("#51576D"),
             .badgeText: .hex("#B5BFE2"),
+
+            // Same 14, one flavour down — Frappé's own published values, not
+            // Latte's dimmed.
+            .layerAccent0: .hex("#BABBF1"), // lavender
+            .layerAccent1: .hex("#EF9F76"), // peach
+            .layerAccent2: .hex("#81C8BE"), // teal
+            .layerAccent3: .hex("#CA9EE6"), // mauve
+            .layerAccent4: .hex("#A6D189"), // green
+            .layerAccent5: .hex("#99D1DB"), // sky
+            .layerAccent6: .hex("#F4B8E4"), // pink
+            .layerAccent7: .hex("#E5C890"), // yellow
+            .layerAccent8: .hex("#85C1DC"), // sapphire
+            .layerAccent9: .hex("#EA999C"), // maroon
+            .layerAccent10: .hex("#E78284"), // red
+            .layerAccent11: .hex("#8CAAEE"), // blue
+            .layerAccent12: .hex("#EEBEBE"), // flamingo
+            .layerAccent13: .hex("#F2D5CF"), // rosewater
         ]),
         metrics: metricTable([
             .keyUnit: 54,
             .keyInset: 3,
-            .keyCornerRadius: 7,
+            .keyCornerRadius: 9,
+            .keycapTopInset: 2,
+            .keycapTopShift: 1.5,
+            .keycapShadowRadius: 4,
+            .keycapShadowYOffset: 2,
+            .underglowBlur: 7,
 
-            .cornerRadiusSmall: 4,
-            .cornerRadiusMedium: 7,
+            .cornerRadiusSmall: 6,
+            .cornerRadiusMedium: 10,
+            .cornerRadiusLarge: 14,
 
             .borderWidth: 1,
-            .borderWidthSelected: 2,
 
             .spacingXS: 4,
             .spacingS: 8,
             .spacingM: 12,
             .spacingL: 18,
+
+            .paneGutter: 10,
+            .panePadding: 14,
 
 
             .sidebarMinWidth: 200,
@@ -523,7 +694,6 @@ extension Theme {
             .sidebarMaxWidth: 320,
 
             .contentMinWidth: 460,
-            .contentIdealWidth: 700,
 
             .inspectorMinWidth: 300,
             .inspectorIdealWidth: 340,
@@ -542,6 +712,7 @@ extension Theme {
             .keycapSecondaryMinScale: 0.6,
 
             .statusDotSize: 7,
+            .layerAccentBarWidth: 3,
             .numericFieldWidth: 120,
             .scrollerGutter: 12,
 

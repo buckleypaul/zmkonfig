@@ -44,7 +44,6 @@ struct InspectorPane: View {
                 AssistantPanelView(model: model, assistant: assistant)
             }
         }
-        .background(theme.color(.panelBackground))
         // Picking a combo, a behavior or a macro while another tab is open would
         // otherwise leave the editor for it out of sight — and adding one
         // selects it, so the panel that appeared would be the wrong one.

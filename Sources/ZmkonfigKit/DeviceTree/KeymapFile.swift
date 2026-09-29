@@ -483,10 +483,6 @@ public struct KeymapFile: Sendable {
         for index in layers.indices { layers[index].id = index }
     }
 
-    /// The behaviors this editor knows take a layer number as their first
-    /// parameter. `&lt` takes one plus a keycode; the rest take only the number.
-    private static let layerParameterBehaviors: Set<String> = ["&mo", "&lt", "&to", "&tog", "&sl"]
-
     /// Layer numbers that would change if this edit were applied, and the
     /// bindings elsewhere in the keymap that name them.
     ///
@@ -507,22 +503,18 @@ public struct KeymapFile: Sendable {
     }
 
     private func layerReferences(_ isAffected: (Int) -> Bool) -> [String] {
-        func number(_ binding: KeyBinding) -> Int? {
-            guard KeymapFile.layerParameterBehaviors.contains(binding.behavior),
-                  let first = binding.params.first, first.params.isEmpty
-            else { return nil }
-            return Int(first.value)
-        }
-
+        // Which behaviors take a layer number, and how the number is read off
+        // one, is `KeycapKit`'s to say — the same rule the board colors a
+        // layer-switch key by.
         var found: [String] = []
         for layer in layers {
             for (key, binding) in layer.bindings.enumerated() {
-                guard let value = number(binding), isAffected(value) else { continue }
+                guard let value = KeycapKit.layerTarget(of: binding), isAffected(value) else { continue }
                 found.append("`\(binding.text)` on layer \(layer.id) (\(layer.displayName)) key \(key)")
             }
         }
         for combo in combos {
-            if let value = number(combo.binding), isAffected(value) {
+            if let value = KeycapKit.layerTarget(of: combo.binding), isAffected(value) {
                 found.append("`\(combo.binding.text)` is what combo `\(combo.nodeName)` fires")
             }
             for value in combo.layers ?? [] where isAffected(value) {
@@ -531,7 +523,7 @@ public struct KeymapFile: Sendable {
         }
         for macro in macros {
             for (step, binding) in macro.bindings.enumerated() {
-                guard let value = number(binding), isAffected(value) else { continue }
+                guard let value = KeycapKit.layerTarget(of: binding), isAffected(value) else { continue }
                 found.append("`\(binding.text)` in macro `&\(macro.label)` step \(step + 1)")
             }
         }

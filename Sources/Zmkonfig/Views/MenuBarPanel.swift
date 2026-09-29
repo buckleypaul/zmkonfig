@@ -54,6 +54,10 @@ struct MenuBarPanel: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(theme.color(.accent))
 
+                // The same identity mark the grid's own thumbnails carry —
+                // zooming into a layer should not lose the color that named it
+                // a moment ago.
+                StatusDot(color: theme.layerAccent(zoomed.id))
                 Text(zoomed.displayName)
                     .font(theme.font(.title))
                     .foregroundStyle(theme.color(.primaryText))
@@ -122,9 +126,14 @@ struct MenuBarPanel: View {
         return Button {
             zoomedLayerID = layer.id
         } label: {
-            Card {
+            // The content surface, as the editor's board pane is: a thumbnail
+            // is the same thing — a card on the desk with a well set into it.
+            Card(surface: .contentBackground) {
                 VStack(alignment: .leading, spacing: theme.metric(.spacingXS)) {
                     HStack(spacing: theme.metric(.spacingXS)) {
+                        // The same identity mark the sidebar and the editor's
+                        // own header wear — a thumbnail is that layer too.
+                        StatusDot(color: theme.layerAccent(layer.id))
                         Text(layer.displayName)
                             .font(theme.font(.heading))
                             .foregroundStyle(theme.color(.primaryText))
@@ -137,10 +146,7 @@ struct MenuBarPanel: View {
                     board(layer, density: .thumbnail)
                         .frame(height: theme.metric(.menuBarThumbnailHeight))
                         .padding(theme.metric(.spacingXS))
-                        .background(
-                            RoundedRectangle(cornerRadius: theme.metric(.cornerRadiusSmall))
-                                .fill(theme.color(.boardBackground))
-                        )
+                        .boardWell()
                 }
             }
         }
@@ -156,7 +162,9 @@ struct MenuBarPanel: View {
             }
             .padding(theme.metric(.spacingS))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(theme.color(.boardBackground))
+            .boardWell()
+            .padding(.horizontal, theme.metric(.spacingM))
+            .padding(.top, theme.metric(.spacingS))
 
             Caption("Click a key to edit it in Zmkonfig", tone: .tertiaryText)
                 .padding(.bottom, theme.metric(.spacingXS))
@@ -217,6 +225,7 @@ struct MenuBarPanel: View {
             behaviors: model.behaviorIndex
         )
         return HStack(alignment: .firstTextBaseline, spacing: theme.metric(.spacingS)) {
+            LayerTargetDot(binding: combo.binding, layers: model.layers)
             Text(names.isEmpty ? "no keys" : names.joined(separator: " + "))
                 .font(theme.font(.monoSmall))
                 .foregroundStyle(theme.color(.secondaryText))

@@ -20,7 +20,6 @@ struct SidebarView: View {
             Divider()
             layerList
         }
-        .background(theme.color(.sidebarBackground))
         .sheet(item: $layerSheet) { intent in
             LayerSheet(model: model, intent: intent)
         }
@@ -168,6 +167,9 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        // The sidebar list paints its own background, which would fill the
+        // pane card's corners back in and hide the surface the card chose.
+        .scrollContentBackground(.hidden)
     }
 
     /// A macro is a behavior node too, but `BehaviorReader` hands
@@ -220,6 +222,8 @@ struct SidebarView: View {
         // layer were open. This marks the one the board is actually drawing.
         let onBoard = model.selectedLayerID == layer.id
         return HStack(spacing: theme.metric(.spacingS)) {
+            // The layer's identity color, as a bar rather than a filled row.
+            LayerAccentBar(layerID: layer.id)
             // Always laid out, so a row does not shift when the mark appears.
             StatusDot(color: onBoard && !selected ? theme.color(.accent) : .clear)
                 .help(onBoard ? "Showing on the board" : "")
@@ -233,6 +237,15 @@ struct SidebarView: View {
             rowDetail("\(layer.bindings.count)", selected: selected)
         }
         .padding(.vertical, 2)
+        // The selected row's own wash, in the layer's own accent.
+        .listRowBackground(selected ? theme.layerAccentSoft(layer.id) : Color.clear)
+        // `.sidebar` style still paints its own emphasized/unemphasized
+        // selection fill on top of `listRowBackground` — AppKit's own blue
+        // when the list has focus, pale grey when it does not — regardless of
+        // the wash above. `.tint` is what that fill is actually drawn in, so
+        // this is what makes a selected row read as *this layer's* color
+        // instead of the universal accent every other row would share.
+        .tint(theme.layerAccent(layer.id))
         .contextMenu {
             Button("Rename…") { layerSheet = .rename(at: layer.id) }
             Button("Add Layer Above…") { layerSheet = .add(at: layer.id) }
@@ -296,6 +309,7 @@ struct SidebarView: View {
     private func comboRow(_ combo: KeymapCombo) -> some View {
         let selected = model.sidebarSelection == .combo(combo.id)
         return HStack(spacing: theme.metric(.spacingS)) {
+            LayerTargetDot(binding: combo.binding, layers: model.layers)
             VStack(alignment: .leading, spacing: 0) {
                 rowTitle(combo.binding.text, font: .monoSmall, selected: selected)
                     .lineLimit(1)
